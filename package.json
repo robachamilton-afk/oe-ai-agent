@@ -13,6 +13,7 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "prebuild": "npm run clean",
+    "prepare": "npm run build",
     "watch": "tsc --watch",
     "prepublishOnly": "npm run build"
   },
@@ -30,13 +31,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/robachamilton-afk/mce-tools.git",
-    "directory": "packages/ai-agent"
+    "url": "git+https://github.com/robachamilton-afk/oe-ai-agent.git"
   },
   "bugs": {
-    "url": "https://github.com/robachamilton-afk/mce-tools/issues"
+    "url": "https://github.com/robachamilton-afk/oe-ai-agent/issues"
   },
-  "homepage": "https://github.com/robachamilton-afk/mce-tools#readme",
+  "homepage": "https://github.com/robachamilton-afk/oe-ai-agent#readme",
   "peerDependencies": {
     "@trpc/server": "^10.0.0",
     "drizzle-orm": "^0.30.0",
