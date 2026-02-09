@@ -20,7 +20,7 @@ export interface AgentRouterDependencies {
   /**
    * Function to get the main database instance
    */
-  getDb: () => MySql2Database<any>;
+  getDb: () => Promise<MySql2Database<any>>;
   
   /**
    * Function to create a project-specific database connection
@@ -72,7 +72,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
         })
       )
       .mutation(async ({ input, ctx }: any) => {
-        const db = getDb();
+        const db = await getDb();
         const orchestrator = new AgentOrchestrator(db, createProjectDbConnection);
 
         return await orchestrator.processMessage({
@@ -94,7 +94,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
         })
       )
       .query(async ({ input, ctx }: any) => {
-        const db = getDb();
+        const db = await getDb();
         const orchestrator = new AgentOrchestrator(db, createProjectDbConnection);
 
         return await orchestrator.conversationManager.getConversation(
@@ -113,7 +113,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
         })
       )
       .query(async ({ input, ctx }: any) => {
-        const db = getDb();
+        const db = await getDb();
         const orchestrator = new AgentOrchestrator(db, createProjectDbConnection);
 
         return await orchestrator.conversationManager.getConversations(
@@ -135,7 +135,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
         })
       )
       .mutation(async ({ input, ctx }: any) => {
-        const db = getDb();
+        const db = await getDb();
         const orchestrator = new AgentOrchestrator(db, createProjectDbConnection);
 
         await orchestrator.learningEngine.submitEdit(
@@ -151,7 +151,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
      * Get learning statistics for the current user
      */
     getLearningStats: protectedProcedure.query(async ({ ctx }: any) => {
-      const db = getDb();
+      const db = await getDb();
       const orchestrator = new AgentOrchestrator(db, createProjectDbConnection);
 
       return await orchestrator.learningEngine.getLearningStats(ctx.user.id);
@@ -161,7 +161,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
      * Get available tools
      */
     getTools: protectedProcedure.query(async ({ ctx }: any) => {
-      const db = getDb();
+      const db = await getDb();
       const orchestrator = new AgentOrchestrator(db, createProjectDbConnection);
 
       return orchestrator.toolExecutor.getToolDefinitions();
