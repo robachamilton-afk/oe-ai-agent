@@ -210,8 +210,8 @@ export const queryRedFlagsTool: ToolDefinition = {
       conditions.push(`mitigated = ${args.mitigated === "true" ? 1 : 0}`);
     }
 
-    // Use project-specific table name
-    const tableName = `proj_${context.projectId}_red_flags`;
+    // Use project-specific table name (camelCase: redFlags, not red_flags)
+    const tableName = `proj_${context.projectId}_redFlags`;
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const query = `
       SELECT id, category, title, description, severity, 
@@ -298,9 +298,10 @@ export const getProjectSummaryTool: ToolDefinition = {
     }
 
     // Use project-specific table names
+    // Note: redFlags uses camelCase, not snake_case
     const docsTable = `proj_${context.projectId}_documents`;
     const factsTable = `proj_${context.projectId}_extracted_facts`;
-    const redFlagsTable = `proj_${context.projectId}_red_flags`;
+    const redFlagsTable = `proj_${context.projectId}_redFlags`;
 
     // Get counts
     const result1 = await context.projectDb.execute(
