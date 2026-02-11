@@ -176,7 +176,7 @@ export class ConversationManager {
       .select()
       .from(agentMessages)
       .where(eq(agentMessages.conversationId, conversationId))
-      .orderBy(desc(agentMessages.createdAt))
+      .orderBy(desc(agentMessages.createdAt), desc(agentMessages.id))
       .limit(count);
 
     return messages.reverse(); // Return in chronological order
