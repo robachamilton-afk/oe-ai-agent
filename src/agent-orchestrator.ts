@@ -134,7 +134,7 @@ export class AgentOrchestrator {
       // Get available tools
       const tools = this.toolExecutor.getToolDefinitions();
       console.log("[AGENT DEBUG] Tools registered:", tools.length);
-      console.log("[AGENT DEBUG] Tool names:", tools.map((t: any) => t.name));
+      console.log("[AGENT DEBUG] Tool names:", tools.map((t: any) => t.function.name));
 
       // Call LLM with tool calling capability
       console.log("[AGENT DEBUG] Initial LLM call - messages array:", JSON.stringify(messages, null, 2));
