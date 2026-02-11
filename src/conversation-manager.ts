@@ -198,9 +198,12 @@ export class ConversationManager {
     const messages = await this.getRecentMessages(conversationId, maxMessages);
 
     return messages.map((msg) => {
+      // IMPORTANT: Ensure content is never null - OpenAI requires non-null content for tool messages
+      const content = msg.content != null ? msg.content : "";
+      
       const llmMessage: Record<string, any> = {
         role: msg.role,
-        content: msg.content,
+        content: content,
       };
 
       // Preserve tool_calls on assistant messages

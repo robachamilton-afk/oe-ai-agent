@@ -239,9 +239,14 @@ export class AgentOrchestrator {
           });
 
           // Add tool result to in-memory messages array
+          // IMPORTANT: Ensure content is never null/undefined - OpenAI requires non-null content for tool messages
+          const toolContent = result.result != null 
+            ? JSON.stringify(result.result)
+            : JSON.stringify({ error: "Tool returned no result" });
+          
           messages.push({
             role: "tool",
-            content: JSON.stringify(result.result),
+            content: toolContent,
             tool_call_id: toolCall.id,
           } as any);
 
@@ -249,7 +254,7 @@ export class AgentOrchestrator {
           await this.conversationManager.addMessage({
             conversationId,
             role: "tool",
-            content: JSON.stringify(result.result),
+            content: toolContent,
             toolCallId: toolCall.id,
           });
         }
