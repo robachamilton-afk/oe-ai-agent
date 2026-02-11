@@ -147,11 +147,17 @@ const normalizeContentPart = (
 
 const normalizeMessage = (message: Message) => {
   const { role, name, tool_call_id } = message;
+  // Preserve tool_calls if present (e.g., on assistant messages)
+  const tool_calls = (message as any).tool_calls;
 
   if (role === "tool" || role === "function") {
-    const content = ensureArray(message.content)
-      .map(part => (typeof part === "string" ? part : JSON.stringify(part)))
-      .join("\n");
+    // Tool messages: flatten content to string
+    const rawContent = message.content;
+    const content = rawContent == null
+      ? ""
+      : ensureArray(rawContent)
+          .map(part => (typeof part === "string" ? part : JSON.stringify(part)))
+          .join("\n");
 
     return {
       role,
@@ -161,22 +167,43 @@ const normalizeMessage = (message: Message) => {
     };
   }
 
-  const contentParts = ensureArray(message.content).map(normalizeContentPart);
+  // For assistant messages with tool_calls, content can be null (OpenAI allows this)
+  if (role === "assistant" && tool_calls && tool_calls.length > 0) {
+    const result: Record<string, any> = {
+      role,
+      content: message.content || null,
+      tool_calls,
+    };
+    if (name) result.name = name;
+    return result;
+  }
+
+  // Handle null/undefined content for other message types
+  const rawContent = message.content;
+  if (rawContent == null) {
+    const result: Record<string, any> = { role, content: "" };
+    if (name) result.name = name;
+    return result;
+  }
+
+  const contentParts = ensureArray(rawContent).map(normalizeContentPart);
 
   // If there's only text content, collapse to a single string for compatibility
   if (contentParts.length === 1 && contentParts[0].type === "text") {
-    return {
+    const result: Record<string, any> = {
       role,
-      name,
       content: contentParts[0].text,
     };
+    if (name) result.name = name;
+    return result;
   }
 
-  return {
+  const result: Record<string, any> = {
     role,
-    name,
     content: contentParts,
   };
+  if (name) result.name = name;
+  return result;
 };
 
 const normalizeToolChoice = (

@@ -166,12 +166,45 @@ export class AgentOrchestrator {
 
       // Execute tool calls if any
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
-        // Add the assistant message with tool_calls to the conversation
+        // Add the assistant message with tool_calls to the in-memory messages array
         messages.push({
           role: "assistant",
           content: assistantMessage.content || null,
           tool_calls: assistantMessage.tool_calls,
         } as any);
+
+        // Save the intermediate assistant message (with tool_calls) to the database
+        // This is critical for conversation history: when loaded later, OpenAI requires
+        // that tool messages are preceded by an assistant message with tool_calls.
+        const toolCallsForDb = assistantMessage.tool_calls.map((tc: ToolCall) => {
+          let parsedArgs: Record<string, unknown> = {};
+          try {
+            parsedArgs = typeof tc.function.arguments === "string"
+              ? JSON.parse(tc.function.arguments)
+              : tc.function.arguments;
+          } catch {
+            parsedArgs = { raw: tc.function.arguments };
+          }
+          return {
+            id: tc.id,
+            name: tc.function.name,
+            arguments: parsedArgs,
+          };
+        });
+
+        await this.conversationManager.addMessage({
+          conversationId,
+          role: "assistant",
+          content: typeof assistantMessage.content === "string"
+            ? assistantMessage.content
+            : "",
+          toolCalls: toolCallsForDb,
+          metadata: {
+            tokens: llmResponse.usage?.total_tokens,
+            model: llmResponse.model,
+            latency: Date.now() - startTime,
+          },
+        });
 
         const executionContext: ToolExecutionContext = {
           userId: request.userId,
@@ -205,12 +238,20 @@ export class AgentOrchestrator {
             result: result.result,
           });
 
-          // Add tool result to conversation
+          // Add tool result to in-memory messages array
           messages.push({
             role: "tool",
             content: JSON.stringify(result.result),
             tool_call_id: toolCall.id,
           } as any);
+
+          // Save tool response to database for conversation history
+          await this.conversationManager.addMessage({
+            conversationId,
+            role: "tool",
+            content: JSON.stringify(result.result),
+            toolCallId: toolCall.id,
+          });
         }
 
         // Get final response after tool execution
@@ -236,12 +277,11 @@ export class AgentOrchestrator {
             : String(finalMessage.content || "");
       }
 
-      // Save assistant response to conversation
+      // Save the final assistant response to conversation
       await this.conversationManager.addMessage({
         conversationId,
         role: "assistant",
-        content: responseContent,
-        toolCalls: toolCallResults.length > 0 ? toolCallResults : undefined,
+        content: responseContent || "I apologize, but I was unable to generate a response.",
         metadata: {
           tokens: llmResponse.usage?.total_tokens,
           model: llmResponse.model,
