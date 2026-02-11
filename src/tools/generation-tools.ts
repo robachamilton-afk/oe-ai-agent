@@ -113,7 +113,7 @@ export const generateRiskNarrativeTool: ToolDefinition = {
       maxTokens: 2000,
     });
 
-    const generatedContent = response.choices[0].message.content as string;
+    const generatedContent = response?.choices?.[0]?.message?.content as string || "Error: Failed to generate content. Please try again.";
 
     // Save generated content for learning
     const contentId = uuidv4();
@@ -212,7 +212,7 @@ export const generateProjectSummaryTool: ToolDefinition = {
       maxTokens: 3000,
     });
 
-    const generatedContent = response.choices[0].message.content as string;
+    const generatedContent = response?.choices?.[0]?.message?.content as string || "Error: Failed to generate content. Please try again.";
 
     // Save generated content
     const contentId = uuidv4();
@@ -308,7 +308,7 @@ export const generateTechnicalSpecificationTool: ToolDefinition = {
       maxTokens: 4000,
     });
 
-    const generatedContent = response.choices[0].message.content as string;
+    const generatedContent = response?.choices?.[0]?.message?.content as string || "Error: Failed to generate content. Please try again.";
 
     // Save generated content
     const contentId = uuidv4();

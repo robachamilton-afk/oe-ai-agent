@@ -137,7 +137,11 @@ Provide your analysis in JSON format.`;
         maxTokens: 2000,
       });
 
-      const analysis = JSON.parse(response.choices[0].message.content as string);
+      const content = response?.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error("Empty LLM response");
+      }
+      const analysis = JSON.parse(typeof content === "string" ? content : JSON.stringify(content));
 
       // Calculate simple edit distance (Levenshtein-like)
       const editDistance = this.calculateEditDistance(draftContent, finalContent);
@@ -165,35 +169,46 @@ Provide your analysis in JSON format.`;
 
   /**
    * Calculate edit distance between two strings
+   * Uses word-level comparison to prevent memory issues with large documents.
+   * Character-level Levenshtein on large docs (>5000 chars) would create
+   * a matrix too large for memory (O(n*m)).
    */
   private calculateEditDistance(str1: string, str2: string): number {
-    const len1 = str1.length;
-    const len2 = str2.length;
-    const matrix: number[][] = [];
+    // Split into words for word-level comparison
+    const words1 = str1.split(/\s+/).filter(Boolean);
+    const words2 = str2.split(/\s+/).filter(Boolean);
 
-    for (let i = 0; i <= len1; i++) {
-      matrix[i] = [i];
-    }
+    // Cap at 2000 words to prevent memory issues
+    const w1 = words1.slice(0, 2000);
+    const w2 = words2.slice(0, 2000);
+    const len1 = w1.length;
+    const len2 = w2.length;
+
+    // Use two-row optimization to reduce memory from O(n*m) to O(min(n,m))
+    let prev = new Array(len2 + 1);
+    let curr = new Array(len2 + 1);
 
     for (let j = 0; j <= len2; j++) {
-      matrix[0][j] = j;
+      prev[j] = j;
     }
 
     for (let i = 1; i <= len1; i++) {
+      curr[0] = i;
       for (let j = 1; j <= len2; j++) {
-        if (str1[i - 1] === str2[j - 1]) {
-          matrix[i][j] = matrix[i - 1][j - 1];
+        if (w1[i - 1] === w2[j - 1]) {
+          curr[j] = prev[j - 1];
         } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1, // substitution
-            matrix[i][j - 1] + 1,     // insertion
-            matrix[i - 1][j] + 1      // deletion
+          curr[j] = Math.min(
+            prev[j - 1] + 1, // substitution
+            curr[j - 1] + 1, // insertion
+            prev[j] + 1      // deletion
           );
         }
       }
+      [prev, curr] = [curr, prev];
     }
 
-    return matrix[len1][len2];
+    return prev[len2];
   }
 
   /**
@@ -217,16 +232,17 @@ Provide your analysis in JSON format.`;
     if (currentModel) {
       // Merge with existing patterns
       const mergedPatterns = this.mergePatterns(
-        currentModel.patterns as StylePatterns || {} as StylePatterns,
+        (currentModel.patterns || {}) as StylePatterns,
         newPatterns
       );
 
-      // Update statistics
-      const stats = currentModel.statistics || {
-        totalEdits: 0,
-        totalGenerations: 0,
-        averageEditDistance: 0,
-        improvementScore: 0,
+      // Update statistics - clone to avoid mutating the original object
+      const rawStats = currentModel.statistics || {};
+      const stats = {
+        totalEdits: (rawStats as any).totalEdits || 0,
+        totalGenerations: (rawStats as any).totalGenerations || 0,
+        averageEditDistance: (rawStats as any).averageEditDistance || 0,
+        improvementScore: (rawStats as any).improvementScore || 0,
       };
 
       stats.totalEdits += 1;
@@ -298,7 +314,11 @@ Provide your analysis in JSON format.`;
         maxTokens: 1500,
       });
 
-      return JSON.parse(response.choices[0].message.content as string);
+      const patternContent = response?.choices?.[0]?.message?.content;
+      if (!patternContent) {
+        return {};
+      }
+      return JSON.parse(typeof patternContent === "string" ? patternContent : JSON.stringify(patternContent));
     } catch (error) {
       console.error("Failed to extract patterns with LLM:", error);
       return {};

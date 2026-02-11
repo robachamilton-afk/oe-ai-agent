@@ -106,15 +106,29 @@ export class AgentOrchestrator {
       const systemPrompt = this.buildSystemPrompt(request);
 
       // Prepare messages for LLM
+      // IMPORTANT: Preserve full message structure including tool_calls and tool_call_id
+      // to maintain valid OpenAI message sequences
       const messages: Message[] = [
         {
           role: "system",
           content: systemPrompt,
         },
-        ...history.map((msg) => ({
-          role: msg.role as "user" | "assistant" | "system",
-          content: msg.content,
-        })),
+        ...history.map((msg) => {
+          const m: any = {
+            role: msg.role,
+            content: msg.content,
+          };
+          // Preserve tool_calls on assistant messages
+          if (msg.tool_calls) {
+            m.tool_calls = msg.tool_calls;
+            m.content = msg.content || null;
+          }
+          // Preserve tool_call_id on tool messages
+          if (msg.tool_call_id) {
+            m.tool_call_id = msg.tool_call_id;
+          }
+          return m;
+        }),
       ];
 
       // Get available tools
@@ -138,7 +152,11 @@ export class AgentOrchestrator {
         throw new Error("Invalid LLM response: missing message in choices[0]");
       }
 
-      let responseContent = assistantMessage.content as string;
+      let responseContent = typeof assistantMessage.content === "string"
+        ? assistantMessage.content
+        : Array.isArray(assistantMessage.content)
+          ? assistantMessage.content.map((p: any) => typeof p === "string" ? p : p?.text || "").join("")
+          : String(assistantMessage.content || "");
       const toolCallResults: Array<{
         id: string;
         name: string;
@@ -164,7 +182,15 @@ export class AgentOrchestrator {
         };
 
         for (const toolCall of assistantMessage.tool_calls) {
-          const args = JSON.parse(toolCall.function.arguments);
+          let args: Record<string, unknown>;
+          try {
+            args = typeof toolCall.function.arguments === "string"
+              ? JSON.parse(toolCall.function.arguments)
+              : toolCall.function.arguments;
+          } catch (parseError) {
+            console.error(`Failed to parse tool call arguments for ${toolCall.function.name}:`, parseError);
+            args = {};
+          }
           const result = await this.toolExecutor.executeTool(
             toolCall.function.name,
             args,
@@ -203,7 +229,11 @@ export class AgentOrchestrator {
           throw new Error("Invalid final LLM response: missing message in choices[0]");
         }
 
-        responseContent = finalMessage.content as string;
+        responseContent = typeof finalMessage.content === "string"
+          ? finalMessage.content
+          : Array.isArray(finalMessage.content)
+            ? finalMessage.content.map((p: any) => typeof p === "string" ? p : p?.text || "").join("")
+            : String(finalMessage.content || "");
       }
 
       // Save assistant response to conversation

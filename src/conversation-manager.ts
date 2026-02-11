@@ -40,6 +40,7 @@ export interface AddMessageParams {
     arguments: Record<string, unknown>;
     result?: unknown;
   }>;
+  toolCallId?: string;
   metadata?: {
     tokens?: number;
     model?: string;
@@ -71,6 +72,10 @@ export class ConversationManager {
       .select()
       .from(agentConversations)
       .where(eq(agentConversations.id, conversationId));
+
+    if (!created) {
+      throw new Error("Failed to create conversation");
+    }
 
     return created;
   }
@@ -119,6 +124,7 @@ export class ConversationManager {
       role: params.role,
       content: params.content,
       toolCalls: params.toolCalls,
+      toolCallId: params.toolCallId,
       metadata: params.metadata,
     };
 
@@ -134,6 +140,10 @@ export class ConversationManager {
       .select()
       .from(agentMessages)
       .where(eq(agentMessages.id, messageId));
+
+    if (!created) {
+      throw new Error("Failed to add message");
+    }
 
     return created;
   }
@@ -171,6 +181,57 @@ export class ConversationManager {
   }
 
   /**
+   * Build conversation history for LLM context
+   * 
+   * IMPORTANT: This method preserves the full message structure including
+   * tool_calls on assistant messages and tool_call_id on tool messages.
+   * OpenAI requires that:
+   * 1. Messages with role 'tool' must follow an assistant message with tool_calls
+   * 2. Tool messages must include tool_call_id matching the assistant's tool_calls
+   */
+  async buildLLMContext(
+    conversationId: string,
+    maxMessages: number = 20
+  ): Promise<Array<Record<string, any>>> {
+    const messages = await this.getRecentMessages(conversationId, maxMessages);
+
+    return messages.map((msg) => {
+      const llmMessage: Record<string, any> = {
+        role: msg.role,
+        content: msg.content,
+      };
+
+      // Preserve tool_calls on assistant messages
+      if (msg.role === "assistant" && msg.toolCalls && msg.toolCalls.length > 0) {
+        llmMessage.content = msg.content || null;
+        llmMessage.tool_calls = msg.toolCalls.map((tc: any) => ({
+          id: tc.id,
+          type: "function",
+          function: {
+            name: tc.name,
+            arguments: typeof tc.arguments === "string"
+              ? tc.arguments
+              : JSON.stringify(tc.arguments),
+          },
+        }));
+      }
+
+      // Preserve tool_call_id on tool messages
+      if (msg.role === "tool") {
+        const toolCallId = (msg as any).toolCallId;
+        if (toolCallId) {
+          llmMessage.tool_call_id = toolCallId;
+        } else if (msg.toolCalls && msg.toolCalls.length > 0) {
+          // Fallback: try to get tool_call_id from toolCalls metadata
+          llmMessage.tool_call_id = msg.toolCalls[0]?.id;
+        }
+      }
+
+      return llmMessage;
+    });
+  }
+
+  /**
    * Update conversation context
    */
   async updateContext(
@@ -182,8 +243,12 @@ export class ConversationManager {
       throw new Error(`Conversation ${conversationId} not found`);
     }
 
+    const existingContext = typeof conversation.context === "string"
+      ? JSON.parse(conversation.context as string)
+      : (conversation.context || {});
+
     const updatedContext = {
-      ...(conversation.context || {}),
+      ...existingContext,
       ...context,
     };
 
@@ -219,21 +284,6 @@ export class ConversationManager {
   }
 
   /**
-   * Build conversation history for LLM context
-   */
-  async buildLLMContext(
-    conversationId: string,
-    maxMessages: number = 20
-  ): Promise<Array<{ role: string; content: string }>> {
-    const messages = await this.getRecentMessages(conversationId, maxMessages);
-
-    return messages.map((msg) => ({
-      role: msg.role,
-      content: msg.content,
-    }));
-  }
-
-  /**
    * Get conversation summary statistics
    */
   async getConversationStats(conversationId: string): Promise<{
@@ -246,20 +296,36 @@ export class ConversationManager {
   }> {
     const messages = await this.getMessages(conversationId);
 
+    const parseMetadata = (m: AgentMessage) => {
+      if (!m.metadata) return {};
+      if (typeof m.metadata === "string") {
+        try { return JSON.parse(m.metadata as string); } catch { return {}; }
+      }
+      return m.metadata;
+    };
+
+    const parseToolCalls = (m: AgentMessage) => {
+      if (!m.toolCalls) return [];
+      if (typeof m.toolCalls === "string") {
+        try { return JSON.parse(m.toolCalls as string); } catch { return []; }
+      }
+      return m.toolCalls;
+    };
+
     const stats = {
       messageCount: messages.length,
       userMessages: messages.filter((m) => m.role === "user").length,
       assistantMessages: messages.filter((m) => m.role === "assistant").length,
       toolCalls: messages.reduce(
-        (sum, m) => sum + (m.toolCalls?.length || 0),
+        (sum, m) => sum + (parseToolCalls(m).length || 0),
         0
       ),
       totalTokens: messages.reduce(
-        (sum, m) => sum + (m.metadata?.tokens || 0),
+        (sum, m) => sum + (parseMetadata(m).tokens || 0),
         0
       ),
       averageLatency:
-        messages.reduce((sum, m) => sum + (m.metadata?.latency || 0), 0) /
+        messages.reduce((sum, m) => sum + (parseMetadata(m).latency || 0), 0) /
         (messages.length || 1),
     };
 

@@ -39,6 +39,7 @@ export const agentMessages = mysqlTable("agent_messages", {
     arguments: Record<string, unknown>;
     result?: unknown;
   }>>(),
+  toolCallId: varchar("tool_call_id", { length: 100 }),
   metadata: json("metadata").$type<{
     tokens?: number;
     model?: string;
@@ -71,7 +72,7 @@ export const agentActions = mysqlTable("agent_actions", {
  */
 export const agentStyleModels = mysqlTable("agent_style_models", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  userId: int("user_id").notNull().unique(),
+  userId: int("user_id").notNull(),
   version: int("version").notNull().default(1),
   patterns: json("patterns").$type<{
     sentenceStructure?: string[];
