@@ -66,7 +66,7 @@ export const queryFactsTool: ToolDefinition = {
       `;
 
       if (conditions.length > 0) {
-        query += ` AND ${conditions.map((_, i) => `?`).join(" AND ")}`;
+        query += ` WHERE ${conditions.map((_, i) => `?`).join(" AND ")}`;
       }
 
       query += ` ORDER BY created_at DESC LIMIT ${limit}`;
