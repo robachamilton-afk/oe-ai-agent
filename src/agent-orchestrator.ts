@@ -135,6 +135,7 @@ export class AgentOrchestrator {
       const tools = this.toolExecutor.getToolDefinitions();
 
       // Call LLM with tool calling capability
+      console.log("[AGENT DEBUG] Initial LLM call - messages array:", JSON.stringify(messages, null, 2));
       const llmResponse = await invokeLLM({
         messages,
         tools,
@@ -224,11 +225,13 @@ export class AgentOrchestrator {
             console.error(`Failed to parse tool call arguments for ${toolCall.function.name}:`, parseError);
             args = {};
           }
+          console.log(`[AGENT DEBUG] Executing tool: ${toolCall.function.name}`, args);
           const result = await this.toolExecutor.executeTool(
             toolCall.function.name,
             args,
             executionContext
           );
+          console.log(`[AGENT DEBUG] Tool ${toolCall.function.name} result:`, JSON.stringify(result, null, 2));
 
           toolsUsed.push(toolCall.function.name);
           toolCallResults.push({
@@ -260,6 +263,7 @@ export class AgentOrchestrator {
         }
 
         // Get final response after tool execution
+        console.log("[AGENT DEBUG] Final LLM call after tools - messages array:", JSON.stringify(messages, null, 2));
         const finalResponse = await invokeLLM({
           messages,
           maxTokens: 2000,
