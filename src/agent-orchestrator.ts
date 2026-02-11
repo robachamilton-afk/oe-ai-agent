@@ -128,7 +128,16 @@ export class AgentOrchestrator {
         maxTokens: 4000,
       });
 
-      const assistantMessage = llmResponse.choices[0].message;
+      // Validate LLM response
+      if (!llmResponse || !llmResponse.choices || llmResponse.choices.length === 0) {
+        throw new Error("Invalid LLM response: missing choices array");
+      }
+
+      const assistantMessage = llmResponse.choices[0]?.message;
+      if (!assistantMessage) {
+        throw new Error("Invalid LLM response: missing message in choices[0]");
+      }
+
       let responseContent = assistantMessage.content as string;
       const toolCallResults: Array<{
         id: string;
@@ -184,7 +193,17 @@ export class AgentOrchestrator {
           maxTokens: 2000,
         });
 
-        responseContent = finalResponse.choices[0].message.content as string;
+        // Validate final response
+        if (!finalResponse || !finalResponse.choices || finalResponse.choices.length === 0) {
+          throw new Error("Invalid final LLM response: missing choices array");
+        }
+
+        const finalMessage = finalResponse.choices[0]?.message;
+        if (!finalMessage) {
+          throw new Error("Invalid final LLM response: missing message in choices[0]");
+        }
+
+        responseContent = finalMessage.content as string;
       }
 
       // Save assistant response to conversation

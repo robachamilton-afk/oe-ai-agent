@@ -1,4 +1,8 @@
-// Environment variables are accessed directly from process.env
+// Environment variables accessed directly for npm package portability
+const ENV = {
+  forgeApiUrl: process.env.FORGE_API_URL || process.env.LLM_API_URL || '',
+  forgeApiKey: process.env.FORGE_API_KEY || process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || '',
+};
 
 export type Role = "system" | "user" | "assistant" | "tool" | "function";
 
@@ -121,6 +125,11 @@ const normalizeContentPart = (
     return { type: "text", text: part };
   }
 
+  // Handle null/undefined
+  if (!part) {
+    return { type: "text", text: "" };
+  }
+
   if (part.type === "text") {
     return part;
   }
@@ -215,15 +224,13 @@ const resolveApiUrl = () => {
     return "https://api.openai.com/v1/chat/completions";
   }
   // Otherwise use Manus Forge API
-  const forgeApiUrl = process.env.FORGE_API_URL || process.env.OPENAI_API_BASE_URL;
-  return forgeApiUrl && forgeApiUrl.trim().length > 0
-    ? `${forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
-    : "https://api.openai.com/v1/chat/completions";
+  return ENV.forgeApiUrl && ENV.forgeApiUrl.trim().length > 0
+    ? `${ENV.forgeApiUrl.replace(/\/$/, "")}/v1/chat/completions`
+    : "https://forge.manus.im/v1/chat/completions";
 };
 
 const assertApiKey = () => {
-  const forgeApiKey = process.env.FORGE_API_KEY || process.env.OPENAI_API_KEY;
-  if (!forgeApiKey) {
+  if (!ENV.forgeApiKey) {
     throw new Error("OPENAI_API_KEY is not configured");
   }
 };
@@ -335,7 +342,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   }
 
   // Choose API key based on provider
-  const apiKey = useOpenAI ? process.env.OPENAI_API_KEY! : (process.env.FORGE_API_KEY || process.env.OPENAI_API_KEY!);
+  const apiKey = useOpenAI ? process.env.OPENAI_API_KEY! : ENV.forgeApiKey;
   
   let lastError: Error | null = null;
   
