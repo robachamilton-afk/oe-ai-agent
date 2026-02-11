@@ -33,51 +33,63 @@ export const queryFactsTool: ToolDefinition = {
     required: [],
   },
   handler: async (args, context) => {
+    console.log("[QUERY_FACTS DEBUG] Starting query_facts with args:", args);
+    console.log("[QUERY_FACTS DEBUG] Context projectId:", context.projectId);
+    console.log("[QUERY_FACTS DEBUG] Context projectDb exists:", !!context.projectDb);
+    
     if (!context.projectDb) {
       throw new Error("Project database not available");
     }
 
-    const limit = (args.limit as number) || 50;
-    const conditions = [];
+    try {
+      const limit = (args.limit as number) || 50;
+      const conditions = [];
 
-    // Build query conditions
-    if (args.category) {
-      conditions.push(sql`category = ${args.category}`);
+      // Build query conditions
+      if (args.category) {
+        conditions.push(sql`category = ${args.category}`);
+      }
+      if (args.key) {
+        conditions.push(sql`\`key\` = ${args.key}`);
+      }
+      if (args.searchTerm) {
+        conditions.push(sql`value LIKE ${`%${args.searchTerm}%`}`);
+      }
+
+      // Build and execute query
+      // Use project-specific table name (e.g., proj_390002_extracted_facts)
+      const tableName = `proj_${context.projectId}_extracted_facts`;
+      let query = `
+        SELECT id, category, \`key\`, value, data_type, confidence, 
+               source_document_id, extraction_method, verified, created_at
+        FROM ${tableName}
+      `;
+
+      if (conditions.length > 0) {
+        query += ` AND ${conditions.map((_, i) => `?`).join(" AND ")}`;
+      }
+
+      query += ` ORDER BY created_at DESC LIMIT ${limit}`;
+
+      console.log("[QUERY_FACTS DEBUG] Executing query:", query);
+      const result = await context.projectDb.execute(query);
+      console.log("[QUERY_FACTS DEBUG] Query result:", result);
+      const rows = result[0] as any[];
+      console.log("[QUERY_FACTS DEBUG] Rows found:", rows?.length || 0);
+      
+      return {
+        facts: rows,
+        count: rows.length,
+        filters: {
+          category: args.category,
+          key: args.key,
+          searchTerm: args.searchTerm,
+        },
+      };
+    } catch (error) {
+      console.error("[QUERY_FACTS ERROR]", error);
+      throw error;
     }
-    if (args.key) {
-      conditions.push(sql`\`key\` = ${args.key}`);
-    }
-    if (args.searchTerm) {
-      conditions.push(sql`value LIKE ${`%${args.searchTerm}%`}`);
-    }
-
-    // Build and execute query
-    // Use project-specific table name (e.g., proj_390002_extracted_facts)
-    const tableName = `proj_${context.projectId}_extracted_facts`;
-    let query = `
-      SELECT id, category, \`key\`, value, data_type, confidence, 
-             source_document_id, extraction_method, verified, created_at
-      FROM ${tableName}
-    `;
-
-    if (conditions.length > 0) {
-      query += ` AND ${conditions.map((_, i) => `?`).join(" AND ")}`;
-    }
-
-    query += ` ORDER BY created_at DESC LIMIT ${limit}`;
-
-    const result = await context.projectDb.execute(query);
-    const rows = result[0] as any[];
-    
-    return {
-      facts: rows,
-      count: rows.length,
-      filters: {
-        category: args.category,
-        key: args.key,
-        searchTerm: args.searchTerm,
-      },
-    };
   },
 };
 
