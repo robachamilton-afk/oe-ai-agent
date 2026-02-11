@@ -118,14 +118,16 @@ export class ConversationManager {
    */
   async addMessage(params: AddMessageParams): Promise<AgentMessage> {
     const messageId = uuidv4();
+    // IMPORTANT: Explicitly set optional fields to undefined to avoid Drizzle
+    // using SQL 'default' keyword which causes INSERT errors
     const message: InsertAgentMessage = {
       id: messageId,
       conversationId: params.conversationId,
       role: params.role,
       content: params.content,
-      toolCalls: params.toolCalls,
-      toolCallId: params.toolCallId,
-      metadata: params.metadata,
+      toolCalls: params.toolCalls ?? undefined,
+      toolCallId: params.toolCallId ?? undefined,
+      metadata: params.metadata ?? undefined,
     };
 
     await this.db.insert(agentMessages).values(message);
