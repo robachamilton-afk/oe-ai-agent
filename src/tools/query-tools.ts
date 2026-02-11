@@ -142,11 +142,10 @@ export const queryDocumentsTool: ToolDefinition = {
     const tableName = `proj_${context.projectId}_documents`;
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const query = `
-      SELECT id, file_name, document_type, status, page_count,
-             upload_date, acc_project_id, acc_folder_id, last_synced_at
+      SELECT id, fileName, documentType, status, pageCount, uploadDate
       FROM ${tableName}
       ${whereClause}
-      ORDER BY upload_date DESC
+      ORDER BY uploadDate DESC
       LIMIT ${limit}
     `;
 
@@ -215,7 +214,7 @@ export const queryRedFlagsTool: ToolDefinition = {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const query = `
       SELECT id, category, title, description, severity, 
-             trigger_fact_id, downstream_consequences, mitigated, created_at
+             triggerFactId, downstreamConsequences, mitigated, createdAt
       FROM ${tableName}
       ${whereClause}
       ORDER BY 
@@ -226,7 +225,7 @@ export const queryRedFlagsTool: ToolDefinition = {
           WHEN 'low' THEN 4
           ELSE 5
         END,
-        created_at DESC
+        createdAt DESC
       LIMIT ${limit}
     `;
 
@@ -267,7 +266,7 @@ export const getFactByIdTool: ToolDefinition = {
     const factsTable = `proj_${context.projectId}_extracted_facts`;
     const docsTable = `proj_${context.projectId}_documents`;
     const query = `
-      SELECT ef.*, d.file_name as source_document_name
+      SELECT ef.*, d.fileName as source_document_name
       FROM ${factsTable} ef
       LEFT JOIN ${docsTable} d ON ef.source_document_id = d.id
       WHERE ef.id = ?
@@ -325,9 +324,9 @@ export const getProjectSummaryTool: ToolDefinition = {
 
     // Get document type breakdown
     const result5 = await context.projectDb.execute(
-      `SELECT document_type, COUNT(*) as count 
+      `SELECT documentType, COUNT(*) as count 
        FROM ${docsTable}
-       GROUP BY document_type`);
+       GROUP BY documentType`);
     const docTypeBreakdown = result5[0] as any[];
 
     return {
