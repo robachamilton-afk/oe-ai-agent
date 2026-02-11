@@ -139,6 +139,13 @@ export class AgentOrchestrator {
 
       // Execute tool calls if any
       if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+        // Add the assistant message with tool_calls to the conversation
+        messages.push({
+          role: "assistant",
+          content: assistantMessage.content || null,
+          tool_calls: assistantMessage.tool_calls,
+        } as any);
+
         const executionContext: ToolExecutionContext = {
           userId: request.userId,
           projectId: request.projectId,
@@ -163,17 +170,12 @@ export class AgentOrchestrator {
             result: result.result,
           });
 
-          // Add tool result to conversation for context
-          messages.push({
-            role: "assistant",
-            content: JSON.stringify(assistantMessage.tool_calls),
-          });
+          // Add tool result to conversation
           messages.push({
             role: "tool",
             content: JSON.stringify(result.result),
-            name: toolCall.function.name,
             tool_call_id: toolCall.id,
-          });
+          } as any);
         }
 
         // Get final response after tool execution
