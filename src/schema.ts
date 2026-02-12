@@ -55,7 +55,7 @@ export const agentMessages = mysqlTable("agentMessages", {
  */
 export const agentActions = mysqlTable("agentActions", {
   id: varchar("id", { length: 36 }).primaryKey(),
-  conversationId: varchar("conversationId", { length: 36 }).notNull(),
+  conversationId: varchar("conversationId", { length: 36 }),
   userId: int("userId").notNull(),
   projectId: int("projectId").notNull(),
   actionType: varchar("actionType", { length: 50 }).notNull(), // query, generate, modify, analyze

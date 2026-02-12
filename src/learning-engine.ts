@@ -57,21 +57,20 @@ export class LearningEngine {
     await this.db
       .update(agentGeneratedContent)
       .set({
-        finalContent,
-        accepted: finalContent === generated.generatedContent,
-        feedback,
+        finalVersion: finalContent,
+        userEdited: finalContent === generated.content ? 0 : 1,
         updatedAt: new Date(),
       })
       .where(eq(agentGeneratedContent.id, contentId));
 
     // If content was accepted without changes, no learning needed
-    if (finalContent === generated.generatedContent) {
+    if (finalContent === generated.content) {
       return;
     }
 
     // Analyze the edit
     const analysis = await this.analyzeEdit(
-      generated.generatedContent,
+      generated.content,
       finalContent
     );
 
@@ -82,7 +81,7 @@ export class LearningEngine {
       userId: generated.userId,
       projectId: generated.projectId,
       contentType: generated.contentType,
-      draftContent: generated.generatedContent,
+      draftContent: generated.content,
       finalContent,
       extractedPatterns: {
         addedPhrases: analysis.addedPhrases,
@@ -91,7 +90,7 @@ export class LearningEngine {
         structuralChanges: analysis.structuralChanges,
       },
       editDistance: analysis.editDistance,
-      applied: false,
+      applied: 0,
     });
 
     // Update style model

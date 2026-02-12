@@ -121,14 +121,14 @@ export const generateRiskNarrativeTool: ToolDefinition = {
       id: contentId,
       userId: context.userId,
       projectId: context.projectId,
-      conversationId: context.conversationId || null,
+      conversationId: context.conversationId ?? undefined,
       contentType: "risk_narrative",
       prompt,
-      generatedContent,
-      finalContent: null,
-      accepted: null,
-      feedback: null,
-      styleModelVersion: styleModel?.version || null,
+      content: generatedContent,
+      finalVersion: undefined,
+      userEdited: 0,
+      modelVersion: styleModel?.version?.toString() ?? undefined,
+      metadata: undefined,
     });
 
     return {
@@ -220,14 +220,14 @@ export const generateProjectSummaryTool: ToolDefinition = {
       id: contentId,
       userId: context.userId,
       projectId: context.projectId,
-      conversationId: context.conversationId || null,
+      conversationId: context.conversationId ?? undefined,
       contentType: "project_summary",
       prompt,
-      generatedContent,
-      finalContent: null,
-      accepted: null,
-      feedback: null,
-      styleModelVersion: null,
+      content: generatedContent,
+      finalVersion: undefined,
+      userEdited: 0,
+      modelVersion: undefined,
+      metadata: undefined,
     });
 
     return {
@@ -316,14 +316,14 @@ export const generateTechnicalSpecificationTool: ToolDefinition = {
       id: contentId,
       userId: context.userId,
       projectId: context.projectId,
-      conversationId: context.conversationId || null,
+      conversationId: context.conversationId ?? undefined,
       contentType: "technical_specification",
       prompt,
-      generatedContent,
-      finalContent: null,
-      accepted: null,
-      feedback: null,
-      styleModelVersion: null,
+      content: generatedContent,
+      finalVersion: undefined,
+      userEdited: 0,
+      modelVersion: undefined,
+      metadata: undefined,
     });
 
     return {

@@ -115,8 +115,8 @@ export class ToolExecutor {
         actionName: toolName,
         input: args,
         output: result as Record<string, unknown>,
-        success: true,
-        errorMessage: null,
+        success: 1,
+        errorMessage: undefined,
         executionTimeMs,
       });
 
@@ -139,8 +139,8 @@ export class ToolExecutor {
         actionType: this.getActionType(toolName),
         actionName: toolName,
         input: args,
-        output: null,
-        success: false,
+        output: undefined,
+        success: 0,
         errorMessage,
         executionTimeMs,
       });
