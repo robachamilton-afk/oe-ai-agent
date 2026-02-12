@@ -57,7 +57,7 @@ export const getWorkflowStatusTool: ToolDefinition = {
           COUNT(*) as total,
           SUM(CASE WHEN verified = 1 THEN 1 ELSE 0 END) as verified,
           COUNT(DISTINCT category) as categories
-         FROM extracted_facts 
+         FROM extractedFacts 
          WHERE project_id = ?`,
         [context.projectId]);
       const factStats = result[0] as any[];
@@ -80,7 +80,7 @@ export const getWorkflowStatusTool: ToolDefinition = {
         `SELECT 
           COUNT(*) as total,
           SUM(CASE WHEN mitigated = 1 THEN 1 ELSE 0 END) as mitigated
-         FROM red_flags 
+         FROM redFlags 
          WHERE project_id = ?`,
         [context.projectId]);
       const redFlagStats = result[0] as any[];
@@ -152,7 +152,7 @@ export const suggestNextActionsTool: ToolDefinition = {
 
     // Check for unverified facts
     const result2 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM extracted_facts 
+      `SELECT COUNT(*) as count FROM extractedFacts 
        WHERE project_id = ? AND verified = 0`,
       [context.projectId]);
     const unverifiedFacts = result2[0] as any[];
@@ -168,7 +168,7 @@ export const suggestNextActionsTool: ToolDefinition = {
 
     // Check for high-severity red flags
     const result3 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM red_flags 
+      `SELECT COUNT(*) as count FROM redFlags 
        WHERE project_id = ? AND severity IN ('critical', 'high') AND mitigated = 0`,
       [context.projectId]);
     const criticalRedFlags = result3[0] as any[];
@@ -184,7 +184,7 @@ export const suggestNextActionsTool: ToolDefinition = {
 
     // Check if project has minimal data
     const result4 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM extracted_facts WHERE project_id = ?`,
+      `SELECT COUNT(*) as count FROM extractedFacts WHERE project_id = ?`,
       [context.projectId]);
     const factCount = result4[0] as any[];
 
@@ -199,7 +199,7 @@ export const suggestNextActionsTool: ToolDefinition = {
 
     // Check for missing critical fact categories
     const result5 = await context.projectDb.execute(
-      `SELECT DISTINCT category FROM extracted_facts WHERE project_id = ?`,
+      `SELECT DISTINCT category FROM extractedFacts WHERE project_id = ?`,
       [context.projectId]);
     const categories = result5[0] as any[];
 
@@ -295,7 +295,7 @@ export const identifyMissingDataTool: ToolDefinition = {
 
       for (const { field, importance } of fields) {
         const queryResult = await context.projectDb.execute(
-          `SELECT COUNT(*) as count FROM extracted_facts 
+          `SELECT COUNT(*) as count FROM extractedFacts 
            WHERE project_id = ? AND category = ? AND \`key\` = ?`,
           [context.projectId, cat, field]);
         const result = queryResult[0] as any[];
@@ -366,7 +366,7 @@ export const validateProjectCompletenessTool: ToolDefinition = {
 
     // Check 2: Facts extracted (30 points)
     const result2 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM extracted_facts WHERE project_id = ?`,
+      `SELECT COUNT(*) as count FROM extractedFacts WHERE project_id = ?`,
       [context.projectId]);
     const factCount = result2[0] as any[];
     const facts = factCount[0]?.count || 0;
@@ -382,7 +382,7 @@ export const validateProjectCompletenessTool: ToolDefinition = {
 
     // Check 3: Critical categories present (25 points)
     const result3 = await context.projectDb.execute(
-      `SELECT DISTINCT category FROM extracted_facts WHERE project_id = ?`,
+      `SELECT DISTINCT category FROM extractedFacts WHERE project_id = ?`,
       [context.projectId]);
     const categories = result3[0] as any[];
     const existingCategories = categories.map((c: any) => c.category);
@@ -402,7 +402,7 @@ export const validateProjectCompletenessTool: ToolDefinition = {
 
     // Check 4: Red flags identified (15 points)
     const result4 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM red_flags WHERE project_id = ?`,
+      `SELECT COUNT(*) as count FROM redFlags WHERE project_id = ?`,
       [context.projectId]);
     const redFlagCount = result4[0] as any[];
     const redFlags = redFlagCount[0]?.count || 0;
@@ -418,7 +418,7 @@ export const validateProjectCompletenessTool: ToolDefinition = {
 
     // Check 5: Facts verified (10 points)
     const result5 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM extracted_facts WHERE project_id = ? AND verified = 1`,
+      `SELECT COUNT(*) as count FROM extractedFacts WHERE project_id = ? AND verified = 1`,
       [context.projectId]);
     const verifiedCount = result5[0] as any[];
     const verified = verifiedCount[0]?.count || 0;

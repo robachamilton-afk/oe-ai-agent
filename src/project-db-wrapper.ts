@@ -8,12 +8,13 @@
 
 import mysql from 'mysql2/promise';
 // Default table names - can be extended by the consuming application
+// Note: All tables now use camelCase after migration
 const DEFAULT_TABLES = [
-  'extracted_facts',
-  'red_flags',
+  'extractedFacts',
+  'redFlags',
   'documents',
-  'document_chunks',
-  'fact_sources',
+  'documentChunks',
+  'factSources',
   'projects'
 ];
 

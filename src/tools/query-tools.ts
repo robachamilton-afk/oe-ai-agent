@@ -57,8 +57,8 @@ export const queryFactsTool: ToolDefinition = {
       }
 
       // Build and execute query
-      // Use project-specific table name (e.g., proj_390002_extracted_facts)
-      const tableName = `proj_${context.projectId}_extracted_facts`;
+      // Use project-specific table name (e.g., proj_390002_extractedFacts)
+      const tableName = `proj_${context.projectId}_extractedFacts`;
       let query = `
         SELECT id, category, \`key\`, value, data_type, confidence, 
                source_document_id, extraction_method, verified, created_at
@@ -263,7 +263,7 @@ export const getFactByIdTool: ToolDefinition = {
     }
 
     // Use project-specific table names
-    const factsTable = `proj_${context.projectId}_extracted_facts`;
+    const factsTable = `proj_${context.projectId}_extractedFacts`;
     const docsTable = `proj_${context.projectId}_documents`;
     const query = `
       SELECT ef.*, d.fileName as source_document_name
@@ -297,9 +297,9 @@ export const getProjectSummaryTool: ToolDefinition = {
     }
 
     // Use project-specific table names
-    // Note: redFlags uses camelCase, not snake_case
+    // Note: All tables now use camelCase after migration
     const docsTable = `proj_${context.projectId}_documents`;
-    const factsTable = `proj_${context.projectId}_extracted_facts`;
+    const factsTable = `proj_${context.projectId}_extractedFacts`;
     const redFlagsTable = `proj_${context.projectId}_redFlags`;
 
     // Get counts

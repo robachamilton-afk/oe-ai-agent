@@ -46,14 +46,14 @@ export const generateRiskNarrativeTool: ToolDefinition = {
     let subject: any;
     if (args.factId) {
       const result = await context.projectDb.execute(
-        `SELECT * FROM extracted_facts WHERE id = ? AND project_id = ?`,
+        `SELECT * FROM extractedFacts WHERE id = ? AND project_id = ?`,
         [args.factId, context.projectId]);
       const rows = result[0] as any[];
       subject = rows[0];
       if (!subject) throw new Error(`Fact ${args.factId} not found`);
     } else if (args.redFlagId) {
       const result = await context.projectDb.execute(
-        `SELECT * FROM red_flags WHERE id = ? AND project_id = ?`,
+        `SELECT * FROM redFlags WHERE id = ? AND project_id = ?`,
         [args.redFlagId, context.projectId]);
       const rows = result[0] as any[];
       subject = rows[0];
@@ -174,12 +174,12 @@ export const generateProjectSummaryTool: ToolDefinition = {
 
     // Gather project data
     const result1 = await context.projectDb.execute(
-      `SELECT category, \`key\`, value FROM extracted_facts WHERE project_id = ? LIMIT 100`,
+      `SELECT category, \`key\`, value FROM extractedFacts WHERE project_id = ? LIMIT 100`,
       [context.projectId]);
     const facts = result1[0] as any[];
 
     const result2 = await context.projectDb.execute(
-      `SELECT category, title, severity FROM red_flags WHERE project_id = ? ORDER BY 
+      `SELECT category, title, severity FROM redFlags WHERE project_id = ? ORDER BY 
        CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END`,
       [context.projectId]);
     const redFlags = result2[0] as any[];
@@ -268,7 +268,7 @@ export const generateTechnicalSpecificationTool: ToolDefinition = {
     }
 
     // Get technical facts
-    let query = `SELECT * FROM extracted_facts WHERE project_id = ?`;
+    let query = `SELECT * FROM extractedFacts WHERE project_id = ?`;
     const params: any[] = [context.projectId];
 
     if (args.category) {
