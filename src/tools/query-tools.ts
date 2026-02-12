@@ -48,25 +48,19 @@ export const queryFactsTool: ToolDefinition = {
       const values: any[] = [];
       
       if (args.category) {
-        // Use LIKE for flexible partial matching
-        whereConditions.push('category LIKE ?');
-        values.push(`%${args.category}%`);
+        // Search in category (metadata) OR value (content)
+        whereConditions.push('(category LIKE ? OR value LIKE ?)');
+        values.push(`%${args.category}%`, `%${args.category}%`);
       }
       if (args.key) {
-        // Use LIKE for flexible partial matching
-        whereConditions.push('`key` LIKE ?');
-        values.push(`%${args.key}%`);
+        // Search in key (metadata) OR value (content)
+        whereConditions.push('(`key` LIKE ? OR value LIKE ?)');
+        values.push(`%${args.key}%`, `%${args.key}%`);
       }
       if (args.searchTerm) {
-        // Browse mode: if no category/key specified, search across all fields
-        if (!args.category && !args.key) {
-          whereConditions.push('(value LIKE ? OR category LIKE ? OR `key` LIKE ?)');
-          values.push(`%${args.searchTerm}%`, `%${args.searchTerm}%`, `%${args.searchTerm}%`);
-        } else {
-          // If category/key specified, only search in value
-          whereConditions.push('value LIKE ?');
-          values.push(`%${args.searchTerm}%`);
-        }
+        // Search across all fields: value (content), category, and key (metadata)
+        whereConditions.push('(value LIKE ? OR category LIKE ? OR `key` LIKE ?)');
+        values.push(`%${args.searchTerm}%`, `%${args.searchTerm}%`, `%${args.searchTerm}%`);
       }
 
       // Build and execute query
