@@ -210,6 +210,12 @@ export class AgentOrchestrator {
           },
         });
 
+        // CRITICAL: Add small delay to ensure assistant message with tool_calls is committed
+        // to database before tool result messages are saved. This prevents race condition where
+        // tool messages appear before assistant+tool_calls in conversation history, causing
+        // "tool must follow tool_calls" errors from OpenAI API.
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         const executionContext: ToolExecutionContext = {
           userId: request.userId,
           projectId: request.projectId,
