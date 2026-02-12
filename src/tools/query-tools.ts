@@ -1,4 +1,4 @@
-import { eq, like, and, desc, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import type { ToolDefinition } from "../tool-executor";
 
 /**
@@ -33,16 +33,17 @@ export const queryFactsTool: ToolDefinition = {
     required: [],
   },
   handler: async (args, context) => {
-    console.log("[QUERY_FACTS DEBUG] Starting query_facts with args:", args);
-    console.log("[QUERY_FACTS DEBUG] Context projectId:", context.projectId);
-    console.log("[QUERY_FACTS DEBUG] Context projectDb exists:", !!context.projectDb);
-    
-    if (!context.projectDb) {
-      throw new Error("Project database not available");
-    }
-
     try {
+      if (!context.projectDb) {
+        throw new Error("Project database not available");
+      }
+
       const limit = (args.limit as number) || 50;
+
+      console.log("[QUERY_FACTS DEBUG] Starting query_facts with args:", args);
+      console.log("[QUERY_FACTS DEBUG] Context projectId:", context.projectId);
+      console.log("[QUERY_FACTS DEBUG] Context projectDb exists:", !!context.projectDb);
+
       // Build conditions
       const whereConditions: string[] = [];
       const values: any[] = [];
@@ -73,7 +74,9 @@ export const queryFactsTool: ToolDefinition = {
       `;
 
       if (whereConditions.length > 0) {
-        query += ` WHERE ${whereConditions.join(" AND ")}`;
+        // Use OR between conditions to find facts matching ANY criteria
+        // This allows flexible searches where category OR key OR searchTerm can match
+        query += ` WHERE ${whereConditions.join(" OR ")}`;
       }
 
       query += ` ORDER BY created_at DESC LIMIT ${limit}`;
@@ -88,11 +91,6 @@ export const queryFactsTool: ToolDefinition = {
       return {
         facts: rows,
         count: rows.length,
-        filters: {
-          category: args.category,
-          key: args.key,
-          searchTerm: args.searchTerm,
-        },
       };
     } catch (error) {
       console.error("[QUERY_FACTS ERROR]", error);
@@ -103,13 +101,13 @@ export const queryFactsTool: ToolDefinition = {
 
 export const listFactCategoriesTool: ToolDefinition = {
   name: "list_fact_categories",
-  description: "List all available fact categories and keys in the project database with counts. Use this to discover what data exists before querying specific facts.",
+  description: "List all available fact categories and keys with counts. Use this to discover what data exists before querying specific facts. Can group by category only or by category+key combination.",
   parameters: {
     type: "object",
     properties: {
       groupBy: {
         type: "string",
-        description: "Group results by 'category' or 'key' (default: 'category')",
+        description: "Group results by 'category' (default) or 'key' (shows category+key combinations)",
         enum: ["category", "key"],
       },
       limit: {
@@ -124,43 +122,43 @@ export const listFactCategoriesTool: ToolDefinition = {
       throw new Error("Project database not available");
     }
 
-    try {
-      const groupBy = (args.groupBy as string) || "category";
-      const limit = (args.limit as number) || 100;
-      const tableName = `proj_${context.projectId}_extractedFacts`;
+    const groupBy = (args.groupBy as string) || "category";
+    const limit = (args.limit as number) || 100;
+    const tableName = `proj_${context.projectId}_extractedFacts`;
 
-      let query: string;
-      if (groupBy === "category") {
-        query = `
-          SELECT category, COUNT(*) as count
-          FROM ${tableName}
-          GROUP BY category
-          ORDER BY count DESC
-          LIMIT ${limit}
-        `;
-      } else {
-        query = `
-          SELECT category, \`key\`, COUNT(*) as count
-          FROM ${tableName}
-          GROUP BY category, \`key\`
-          ORDER BY count DESC
-          LIMIT ${limit}
-        `;
-      }
-
-      const result = await context.projectDb.execute(query);
-      const rows = result[0] as any[];
-
-      return {
-        groupBy,
-        items: rows,
-        count: rows.length,
-        totalFacts: rows.reduce((sum: number, row: any) => sum + row.count, 0),
-      };
-    } catch (error) {
-      console.error("[LIST_FACT_CATEGORIES ERROR]", error);
-      throw error;
+    let query: string;
+    if (groupBy === "key") {
+      query = `
+        SELECT category, \`key\`, COUNT(*) as count
+        FROM ${tableName}
+        GROUP BY category, \`key\`
+        ORDER BY count DESC
+        LIMIT ${limit}
+      `;
+    } else {
+      query = `
+        SELECT category, COUNT(*) as count
+        FROM ${tableName}
+        GROUP BY category
+        ORDER BY count DESC
+        LIMIT ${limit}
+      `;
     }
+
+    const result = await context.projectDb.execute(query);
+    const rows = result[0] as any[];
+
+    // Get total fact count
+    const countQuery = `SELECT COUNT(*) as total FROM ${tableName}`;
+    const countResult = await context.projectDb.execute(countQuery);
+    const totalFacts = (countResult[0] as any[])[0].total;
+
+    return {
+      groupBy,
+      items: rows,
+      count: rows.length,
+      totalFacts,
+    };
   },
 };
 
@@ -173,7 +171,6 @@ export const queryDocumentsTool: ToolDefinition = {
       documentType: {
         type: "string",
         description: "Filter by document type",
-        enum: ["IM", "DD_PACK", "CONTRACT", "GRID_STUDY", "CONCEPT_DESIGN", "WEATHER_FILE", "OTHER"],
       },
       searchTerm: {
         type: "string",
@@ -182,7 +179,7 @@ export const queryDocumentsTool: ToolDefinition = {
       status: {
         type: "string",
         description: "Filter by processing status",
-        enum: ["uploaded", "processing", "completed", "failed"],
+        enum: ["pending", "processing", "completed", "failed"],
       },
       limit: {
         type: "number",
@@ -200,10 +197,10 @@ export const queryDocumentsTool: ToolDefinition = {
     const conditions = [];
 
     if (args.documentType) {
-      conditions.push(`document_type = '${args.documentType}'`);
+      conditions.push(`documentType = '${args.documentType}'`);
     }
     if (args.searchTerm) {
-      conditions.push(`file_name LIKE '%${args.searchTerm}%'`);
+      conditions.push(`fileName LIKE '%${args.searchTerm}%'`);
     }
     if (args.status) {
       conditions.push(`status = '${args.status}'`);
@@ -213,10 +210,10 @@ export const queryDocumentsTool: ToolDefinition = {
     const tableName = `proj_${context.projectId}_documents`;
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const query = `
-      SELECT id, fileName, documentType, status, pageCount, uploadDate
+      SELECT id, fileName, documentType, status, pageCount, uploadedAt, processedAt
       FROM ${tableName}
       ${whereClause}
-      ORDER BY uploadDate DESC
+      ORDER BY uploadedAt DESC
       LIMIT ${limit}
     `;
 
@@ -237,23 +234,17 @@ export const queryDocumentsTool: ToolDefinition = {
 
 export const queryRedFlagsTool: ToolDefinition = {
   name: "query_red_flags",
-  description: "Query red flags (risks) identified in the project. Can filter by category or severity.",
+  description: "Query red flags (risks and issues) identified in the project. Red flags are stored as facts with category='Risks_And_Issues'. Can search by key or value.",
   parameters: {
     type: "object",
     properties: {
-      category: {
+      searchTerm: {
         type: "string",
-        description: "Filter by red flag category",
+        description: "Search term to find in risk/issue facts (searches key and value fields)",
       },
       severity: {
         type: "string",
-        description: "Filter by severity level",
-        enum: ["low", "medium", "high", "critical"],
-      },
-      mitigated: {
-        type: "string",
-        description: "Filter by mitigation status (true/false)",
-        enum: ["true", "false"],
+        description: "Filter by severity level (high, medium, low, critical)",
       },
       limit: {
         type: "number",
@@ -268,62 +259,56 @@ export const queryRedFlagsTool: ToolDefinition = {
     }
 
     const limit = (args.limit as number) || 50;
-    const conditions = [];
+    const whereConditions: string[] = [];
+    const values: any[] = [];
 
-    if (args.category) {
-      conditions.push(`category = '${args.category}'`);
+    // Red flags are stored in extractedFacts with category='Risks_And_Issues'
+    whereConditions.push('category = ?');
+    values.push('Risks_And_Issues');
+
+    if (args.searchTerm) {
+      whereConditions.push('(`key` LIKE ? OR value LIKE ?)');
+      values.push(`%${args.searchTerm}%`, `%${args.searchTerm}%`);
     }
+    
     if (args.severity) {
-      conditions.push(`severity = '${args.severity}'`);
-    }
-    if (args.mitigated) {
-      conditions.push(`mitigated = ${args.mitigated === "true" ? 1 : 0}`);
+      whereConditions.push('(`key` LIKE ? OR value LIKE ?)');
+      values.push(`%${args.severity}%`, `%${args.severity}%`);
     }
 
-    // Use project-specific table name (camelCase: redFlags, not red_flags)
-    const tableName = `proj_${context.projectId}_redFlags`;
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    // Use project-specific extractedFacts table
+    const tableName = `proj_${context.projectId}_extractedFacts`;
     const query = `
-      SELECT id, category, title, description, severity, 
-             triggerFactId, downstreamConsequences, mitigated, createdAt
+      SELECT id, category, \`key\`, value, data_type, confidence, 
+             source_document_id, extraction_method, verified, created_at
       FROM ${tableName}
-      ${whereClause}
-      ORDER BY 
-        CASE severity
-          WHEN 'critical' THEN 1
-          WHEN 'high' THEN 2
-          WHEN 'medium' THEN 3
-          WHEN 'low' THEN 4
-          ELSE 5
-        END,
-        createdAt DESC
+      WHERE ${whereConditions.join(" AND ")}
+      ORDER BY created_at DESC
       LIMIT ${limit}
     `;
 
-    const result = await context.projectDb.execute(query);
+    console.log("[QUERY_RED_FLAGS DEBUG] Executing query:", query);
+    console.log("[QUERY_RED_FLAGS DEBUG] Query values:", values);
+    const result = await context.projectDb.execute(query, values);
     const rows = result[0] as any[];
+    console.log("[QUERY_RED_FLAGS DEBUG] Rows found:", rows?.length || 0);
 
     return {
       redFlags: rows,
       count: rows.length,
-      filters: {
-        category: args.category,
-        severity: args.severity,
-        mitigated: args.mitigated,
-      },
     };
   },
 };
 
 export const getFactByIdTool: ToolDefinition = {
   name: "get_fact_by_id",
-  description: "Get detailed information about a specific fact by its ID.",
+  description: "Get a specific fact by its ID. Useful for retrieving detailed information about a fact mentioned in another query.",
   parameters: {
     type: "object",
     properties: {
       factId: {
         type: "string",
-        description: "The unique identifier of the fact",
+        description: "The ID of the fact to retrieve",
       },
     },
     required: ["factId"],
@@ -333,30 +318,51 @@ export const getFactByIdTool: ToolDefinition = {
       throw new Error("Project database not available");
     }
 
-    // Use project-specific table names
-    const factsTable = `proj_${context.projectId}_extractedFacts`;
-    const docsTable = `proj_${context.projectId}_documents`;
+    // Use project-specific table name
+    const tableName = `proj_${context.projectId}_extractedFacts`;
     const query = `
-      SELECT ef.*, d.fileName as source_document_name
-      FROM ${factsTable} ef
-      LEFT JOIN ${docsTable} d ON ef.source_document_id = d.id
-      WHERE ef.id = ?
+      SELECT id, category, \`key\`, value, data_type, confidence, 
+             source_document_id, extraction_method, verified, created_at,
+             metadata
+      FROM ${tableName}
+      WHERE id = ?
     `;
 
     const result = await context.projectDb.execute(query, [args.factId]);
     const rows = result[0] as any[];
 
     if (rows.length === 0) {
-      throw new Error(`Fact with ID ${args.factId} not found`);
+      return {
+        fact: null,
+        error: "Fact not found",
+      };
     }
 
-    return rows[0];
+    // Get source document info if available
+    let sourceDocument = null;
+    if (rows[0].source_document_id) {
+      const docQuery = `
+        SELECT id, fileName, documentType
+        FROM proj_${context.projectId}_documents
+        WHERE id = ?
+      `;
+      const docResult = await context.projectDb.execute(docQuery, [rows[0].source_document_id]);
+      const docRows = docResult[0] as any[];
+      if (docRows.length > 0) {
+        sourceDocument = docRows[0];
+      }
+    }
+
+    return {
+      fact: rows[0],
+      sourceDocument,
+    };
   },
 };
 
 export const getProjectSummaryTool: ToolDefinition = {
   name: "get_project_summary",
-  description: "Get a high-level summary of the project including counts of documents, facts, and red flags.",
+  description: "Get a high-level summary of the project including document count, fact count by category, and red flag count. Use this to get an overview before diving into specific queries.",
   parameters: {
     type: "object",
     properties: {},
@@ -367,46 +373,52 @@ export const getProjectSummaryTool: ToolDefinition = {
       throw new Error("Project database not available");
     }
 
-    // Use project-specific table names
-    // Note: All tables now use camelCase after migration
-    const docsTable = `proj_${context.projectId}_documents`;
-    const factsTable = `proj_${context.projectId}_extractedFacts`;
-    const redFlagsTable = `proj_${context.projectId}_redFlags`;
+    // Get document count
+    const docQuery = `SELECT COUNT(*) as count FROM proj_${context.projectId}_documents`;
+    const docResult = await context.projectDb.execute(docQuery);
+    const documentCount = (docResult[0] as any[])[0].count;
 
-    // Get counts
-    const result1 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM ${docsTable}`);
-    const docCount = result1[0] as any[];
-    
-    const result2 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM ${factsTable}`);
-    const factCount = result2[0] as any[];
-    
-    const result3 = await context.projectDb.execute(
-      `SELECT COUNT(*) as count FROM ${redFlagsTable}`);
-    const redFlagCount = result3[0] as any[];
+    // Get fact count by category
+    const factQuery = `
+      SELECT category, COUNT(*) as count 
+      FROM proj_${context.projectId}_extractedFacts 
+      GROUP BY category 
+      ORDER BY count DESC
+    `;
+    const factResult = await context.projectDb.execute(factQuery);
+    const factsByCategory = factResult[0] as any[];
 
-    // Get red flag breakdown by severity
-    const result4 = await context.projectDb.execute(
-      `SELECT severity, COUNT(*) as count 
-       FROM ${redFlagsTable}
-       GROUP BY severity`);
-    const severityBreakdown = result4[0] as any[];
+    // Get total fact count
+    const totalFactQuery = `SELECT COUNT(*) as count FROM proj_${context.projectId}_extractedFacts`;
+    const totalFactResult = await context.projectDb.execute(totalFactQuery);
+    const totalFactCount = (totalFactResult[0] as any[])[0].count;
 
-    // Get document type breakdown
-    const result5 = await context.projectDb.execute(
-      `SELECT documentType, COUNT(*) as count 
-       FROM ${docsTable}
-       GROUP BY documentType`);
-    const docTypeBreakdown = result5[0] as any[];
+    // Get red flag count (facts with category='Risks_And_Issues')
+    const redFlagQuery = `
+      SELECT COUNT(*) as count 
+      FROM proj_${context.projectId}_extractedFacts 
+      WHERE category = 'Risks_And_Issues'
+    `;
+    const redFlagResult = await context.projectDb.execute(redFlagQuery);
+    const redFlagCount = (redFlagResult[0] as any[])[0].count;
+
+    // Get sample high-value facts (top 10 by confidence)
+    const sampleFactsQuery = `
+      SELECT category, \`key\`, value, confidence
+      FROM proj_${context.projectId}_extractedFacts
+      WHERE category != 'Risks_And_Issues'
+      ORDER BY confidence DESC
+      LIMIT 10
+    `;
+    const sampleFactsResult = await context.projectDb.execute(sampleFactsQuery);
+    const sampleFacts = sampleFactsResult[0] as any[];
 
     return {
-      projectId: context.projectId,
-      documentCount: docCount[0]?.count || 0,
-      factCount: factCount[0]?.count || 0,
-      redFlagCount: redFlagCount[0]?.count || 0,
-      redFlagsBySeverity: severityBreakdown,
-      documentsByType: docTypeBreakdown,
+      documentCount,
+      factCount: totalFactCount,
+      factsByCategory,
+      redFlagCount,
+      sampleFacts,
     };
   },
 };
