@@ -43,17 +43,21 @@ export const queryFactsTool: ToolDefinition = {
 
     try {
       const limit = (args.limit as number) || 50;
-      const conditions = [];
-
-      // Build query conditions
+      // Build conditions
+      const whereConditions: string[] = [];
+      const values: any[] = [];
+      
       if (args.category) {
-        conditions.push(sql`category = ${args.category}`);
+        whereConditions.push('category = ?');
+        values.push(args.category);
       }
       if (args.key) {
-        conditions.push(sql`\`key\` = ${args.key}`);
+        whereConditions.push('`key` = ?');
+        values.push(args.key);
       }
       if (args.searchTerm) {
-        conditions.push(sql`value LIKE ${`%${args.searchTerm}%`}`);
+        whereConditions.push('value LIKE ?');
+        values.push(`%${args.searchTerm}%`);
       }
 
       // Build and execute query
@@ -65,14 +69,15 @@ export const queryFactsTool: ToolDefinition = {
         FROM ${tableName}
       `;
 
-      if (conditions.length > 0) {
-        query += ` WHERE ${conditions.map((_, i) => `?`).join(" AND ")}`;
+      if (whereConditions.length > 0) {
+        query += ` WHERE ${whereConditions.join(" AND ")}`;
       }
 
       query += ` ORDER BY created_at DESC LIMIT ${limit}`;
 
       console.log("[QUERY_FACTS DEBUG] Executing query:", query);
-      const result = await context.projectDb.execute(query);
+      console.log("[QUERY_FACTS DEBUG] Query values:", values);
+      const result = await context.projectDb.execute(query, values);
       console.log("[QUERY_FACTS DEBUG] Query result:", result);
       const rows = result[0] as any[];
       console.log("[QUERY_FACTS DEBUG] Rows found:", rows?.length || 0);
