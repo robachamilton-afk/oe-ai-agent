@@ -9,21 +9,21 @@ import type { ToolDefinition } from "../tool-executor";
 
 export const queryFactsTool: ToolDefinition = {
   name: "query_facts",
-  description: "Query extracted facts from the project database. Can filter by category, key, or search in values.",
+  description: "Query extracted facts from the project database. Uses flexible partial matching for category and key. Common categories: Project_Overview, Design_Parameters, Technical_Design, Financial, Location, Dependencies, Risks_And_Issues, Performance. Common keys: DC_Capacity, AC_Capacity, Project_Name, Location, Technology_Type, COD, Capacity_Factor.",
   parameters: {
     type: "object",
     properties: {
       category: {
         type: "string",
-        description: "Filter by fact category (e.g., 'technical', 'financial', 'location')",
+        description: "Filter by fact category using partial match (e.g., 'design' matches 'Design_Parameters', 'technical' matches 'Technical_Design')",
       },
       key: {
         type: "string",
-        description: "Filter by fact key (e.g., 'capacity_mw', 'location_coordinates')",
+        description: "Filter by fact key using partial match (e.g., 'capacity' matches 'DC_Capacity' and 'AC_Capacity')",
       },
       searchTerm: {
         type: "string",
-        description: "Search term to find in fact values",
+        description: "Search term to find in fact values, categories, or keys (searches all fields if category/key not specified)",
       },
       limit: {
         type: "number",
@@ -48,16 +48,25 @@ export const queryFactsTool: ToolDefinition = {
       const values: any[] = [];
       
       if (args.category) {
-        whereConditions.push('category = ?');
-        values.push(args.category);
+        // Use LIKE for flexible partial matching
+        whereConditions.push('category LIKE ?');
+        values.push(`%${args.category}%`);
       }
       if (args.key) {
-        whereConditions.push('`key` = ?');
-        values.push(args.key);
+        // Use LIKE for flexible partial matching
+        whereConditions.push('`key` LIKE ?');
+        values.push(`%${args.key}%`);
       }
       if (args.searchTerm) {
-        whereConditions.push('value LIKE ?');
-        values.push(`%${args.searchTerm}%`);
+        // Browse mode: if no category/key specified, search across all fields
+        if (!args.category && !args.key) {
+          whereConditions.push('(value LIKE ? OR category LIKE ? OR `key` LIKE ?)');
+          values.push(`%${args.searchTerm}%`, `%${args.searchTerm}%`, `%${args.searchTerm}%`);
+        } else {
+          // If category/key specified, only search in value
+          whereConditions.push('value LIKE ?');
+          values.push(`%${args.searchTerm}%`);
+        }
       }
 
       // Build and execute query
@@ -93,6 +102,69 @@ export const queryFactsTool: ToolDefinition = {
       };
     } catch (error) {
       console.error("[QUERY_FACTS ERROR]", error);
+      throw error;
+    }
+  },
+};
+
+export const listFactCategoriesTool: ToolDefinition = {
+  name: "list_fact_categories",
+  description: "List all available fact categories and keys in the project database with counts. Use this to discover what data exists before querying specific facts.",
+  parameters: {
+    type: "object",
+    properties: {
+      groupBy: {
+        type: "string",
+        description: "Group results by 'category' or 'key' (default: 'category')",
+        enum: ["category", "key"],
+      },
+      limit: {
+        type: "number",
+        description: "Maximum number of groups to return (default: 100)",
+      },
+    },
+    required: [],
+  },
+  handler: async (args, context) => {
+    if (!context.projectDb) {
+      throw new Error("Project database not available");
+    }
+
+    try {
+      const groupBy = (args.groupBy as string) || "category";
+      const limit = (args.limit as number) || 100;
+      const tableName = `proj_${context.projectId}_extractedFacts`;
+
+      let query: string;
+      if (groupBy === "category") {
+        query = `
+          SELECT category, COUNT(*) as count
+          FROM ${tableName}
+          GROUP BY category
+          ORDER BY count DESC
+          LIMIT ${limit}
+        `;
+      } else {
+        query = `
+          SELECT category, \`key\`, COUNT(*) as count
+          FROM ${tableName}
+          GROUP BY category, \`key\`
+          ORDER BY count DESC
+          LIMIT ${limit}
+        `;
+      }
+
+      const result = await context.projectDb.execute(query);
+      const rows = result[0] as any[];
+
+      return {
+        groupBy,
+        items: rows,
+        count: rows.length,
+        totalFacts: rows.reduce((sum: number, row: any) => sum + row.count, 0),
+      };
+    } catch (error) {
+      console.error("[LIST_FACT_CATEGORIES ERROR]", error);
       throw error;
     }
   },
@@ -348,6 +420,7 @@ export const getProjectSummaryTool: ToolDefinition = {
 // Export all query tools
 export const queryTools: ToolDefinition[] = [
   queryFactsTool,
+  listFactCategoriesTool,
   queryDocumentsTool,
   queryRedFlagsTool,
   getFactByIdTool,
