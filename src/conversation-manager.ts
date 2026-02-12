@@ -163,7 +163,7 @@ export class ConversationManager {
       .select()
       .from(agentMessages)
       .where(eq(agentMessages.conversationId, conversationId))
-      .orderBy(agentMessages.createdAt)
+      .orderBy(agentMessages.createdAt, agentMessages.id)
       .limit(limit);
   }
 
