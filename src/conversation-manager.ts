@@ -199,7 +199,34 @@ export class ConversationManager {
   ): Promise<Array<Record<string, any>>> {
     const messages = await this.getRecentMessages(conversationId, maxMessages);
 
-    return messages.map((msg) => {
+    // Validate message sequence to prevent orphaned tool messages
+    // OpenAI requires tool messages to follow an assistant message with tool_calls
+    const validatedMessages: typeof messages = [];
+    let lastAssistantWithToolCalls: any = null;
+    
+    for (const msg of messages) {
+      if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+        // Track assistant messages with tool_calls
+        lastAssistantWithToolCalls = msg;
+        validatedMessages.push(msg);
+      } else if (msg.role === 'tool') {
+        // Only include tool messages if we have a parent assistant message with tool_calls
+        if (lastAssistantWithToolCalls) {
+          validatedMessages.push(msg);
+        } else {
+          console.warn(`[VALIDATION] Skipping orphaned tool message at position ${validatedMessages.length}: ${msg.id}`);
+          console.warn(`[VALIDATION] Tool message content: ${msg.content?.substring(0, 100)}...`);
+        }
+      } else {
+        // For user/system/assistant messages without tool_calls, reset tracking
+        if (msg.role === 'user' || msg.role === 'system' || (msg.role === 'assistant' && (!msg.toolCalls || msg.toolCalls.length === 0))) {
+          lastAssistantWithToolCalls = null;
+        }
+        validatedMessages.push(msg);
+      }
+    }
+
+    return validatedMessages.map((msg) => {
       // IMPORTANT: Ensure content is never null - OpenAI requires non-null content for tool messages
       const content = msg.content != null ? msg.content : "";
       
