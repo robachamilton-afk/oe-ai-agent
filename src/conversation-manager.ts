@@ -64,6 +64,8 @@ export class ConversationManager {
       title: params.title || `Conversation ${new Date().toISOString()}`,
       context: params.context || {},
       status: "active",
+      createdAt: undefined,
+      updatedAt: undefined,
     };
 
     await this.db.insert(agentConversations).values(conversation);
