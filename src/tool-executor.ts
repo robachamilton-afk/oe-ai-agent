@@ -31,6 +31,7 @@ export interface ToolExecutionContext {
   projectId: number;
   conversationId?: string;
   db: MySql2Database<any>;
+  mainDb: MySql2Database<any>; // Alias for db, used by narrative tools
   projectDb?: ProjectDbPool;
 }
 

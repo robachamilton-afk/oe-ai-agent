@@ -7,6 +7,7 @@ import { LearningEngine } from "./learning-engine";
 import { queryTools } from "./tools/query-tools";
 import { generationTools } from "./tools/generation-tools";
 import { workflowTools } from "./tools/workflow-tools";
+import { allModificationTools } from "./tools/modification-tools";
 
 /**
  * Agent Orchestrator
@@ -62,7 +63,7 @@ export class AgentOrchestrator {
     this.learningEngine = new LearningEngine(db);
 
     // Register all available tools
-    this.toolExecutor.registerTools([...queryTools, ...generationTools, ...workflowTools]);
+    this.toolExecutor.registerTools([...queryTools, ...generationTools, ...workflowTools, ...allModificationTools]);
   }
 
   /**
@@ -214,6 +215,7 @@ export class AgentOrchestrator {
           projectId: request.projectId,
           conversationId,
           db: this.db,
+          mainDb: this.db, // Alias for narrative tools
           projectDb,
         };
 
