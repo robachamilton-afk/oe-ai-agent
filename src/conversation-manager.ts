@@ -199,30 +199,75 @@ export class ConversationManager {
   ): Promise<Array<Record<string, any>>> {
     const messages = await this.getRecentMessages(conversationId, maxMessages);
 
-    // Validate message sequence to prevent orphaned tool messages
-    // OpenAI requires tool messages to follow an assistant message with tool_calls
-    const validatedMessages: typeof messages = [];
-    let lastAssistantWithToolCalls: any = null;
+    // Validate message sequence to ensure complete tool call sequences
+    // OpenAI requires:
+    // 1. Tool messages must follow an assistant message with tool_calls
+    // 2. ALL tool_call_ids in an assistant message must have corresponding tool responses
+    
+    // First pass: identify which assistant messages have complete tool responses
+    const assistantToolCallMap = new Map<string, Set<string>>(); // msg.id -> Set of tool_call_ids
+    const toolResponseMap = new Map<string, Set<string>>(); // assistant msg.id -> Set of responded tool_call_ids
+    
+    let currentAssistantId: string | null = null;
     
     for (const msg of messages) {
       if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
-        // Track assistant messages with tool_calls
-        lastAssistantWithToolCalls = msg;
+        currentAssistantId = msg.id;
+        const toolCallIds = new Set(msg.toolCalls.map((tc: any) => tc.id));
+        assistantToolCallMap.set(msg.id, toolCallIds);
+        toolResponseMap.set(msg.id, new Set());
+      } else if (msg.role === 'tool' && currentAssistantId) {
+        const toolCallId = (msg as any).toolCallId || msg.toolCalls?.[0]?.id;
+        if (toolCallId) {
+          toolResponseMap.get(currentAssistantId)?.add(toolCallId);
+        }
+      } else if (msg.role === 'user' || msg.role === 'system' || (msg.role === 'assistant' && (!msg.toolCalls || msg.toolCalls.length === 0))) {
+        currentAssistantId = null;
+      }
+    }
+    
+    // Second pass: build validated message list, skipping incomplete tool call sequences
+    const validatedMessages: typeof messages = [];
+    let skipUntilNextUserMessage = false;
+    currentAssistantId = null;
+    
+    for (const msg of messages) {
+      if (msg.role === 'user' || msg.role === 'system') {
+        skipUntilNextUserMessage = false;
+        currentAssistantId = null;
         validatedMessages.push(msg);
-      } else if (msg.role === 'tool') {
-        // Only include tool messages if we have a parent assistant message with tool_calls
-        if (lastAssistantWithToolCalls) {
+      } else if (msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0) {
+        // Check if this assistant message has all its tool responses
+        const expectedToolCalls = assistantToolCallMap.get(msg.id);
+        const actualResponses = toolResponseMap.get(msg.id);
+        
+        const hasAllResponses = expectedToolCalls && actualResponses && 
+          expectedToolCalls.size === actualResponses.size &&
+          Array.from(expectedToolCalls).every(id => actualResponses.has(id));
+        
+        if (hasAllResponses) {
+          currentAssistantId = msg.id;
+          skipUntilNextUserMessage = false;
           validatedMessages.push(msg);
         } else {
-          console.warn(`[VALIDATION] Skipping orphaned tool message at position ${validatedMessages.length}: ${msg.id}`);
-          console.warn(`[VALIDATION] Tool message content: ${msg.content?.substring(0, 100)}...`);
+          console.warn(`[VALIDATION] Skipping assistant message with incomplete tool responses: ${msg.id}`);
+          console.warn(`[VALIDATION] Expected ${expectedToolCalls?.size} responses, got ${actualResponses?.size}`);
+          skipUntilNextUserMessage = true;
+          currentAssistantId = null;
+        }
+      } else if (msg.role === 'tool') {
+        // Only include tool messages if we're not skipping and they belong to current assistant
+        if (!skipUntilNextUserMessage && currentAssistantId) {
+          validatedMessages.push(msg);
+        } else {
+          console.warn(`[VALIDATION] Skipping tool message (orphaned or incomplete sequence): ${msg.id}`);
         }
       } else {
-        // For user/system/assistant messages without tool_calls, reset tracking
-        if (msg.role === 'user' || msg.role === 'system' || (msg.role === 'assistant' && (!msg.toolCalls || msg.toolCalls.length === 0))) {
-          lastAssistantWithToolCalls = null;
+        // Regular assistant messages without tool_calls
+        if (!skipUntilNextUserMessage) {
+          validatedMessages.push(msg);
         }
-        validatedMessages.push(msg);
+        currentAssistantId = null;
       }
     }
 
