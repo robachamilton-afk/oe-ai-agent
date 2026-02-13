@@ -61,6 +61,14 @@ export type {
 export { queryTools } from './tools/query-tools';
 export { generationTools } from './tools/generation-tools';
 export { workflowTools } from './tools/workflow-tools';
+export { allModificationTools } from './tools/modification-tools';
+export { intelligenceTools } from './tools/intelligence-tools';
+export { knowledgeBaseTools } from './tools/knowledge-base-tools';
+
+// Knowledge System
+export { KnowledgeExtractor } from './knowledge-extractor';
+export type { ConversationSummary } from './knowledge-extractor';
+export { seedKnowledgeBase, getSeedEntryCount } from './seed-knowledge-base';
 
 // tRPC Router Factory (optional - for direct integration)
 export { createAgentRouter } from './create-agent-router';

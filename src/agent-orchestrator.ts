@@ -9,6 +9,8 @@ import { generationTools } from "./tools/generation-tools";
 import { workflowTools } from "./tools/workflow-tools";
 import { allModificationTools } from "./tools/modification-tools";
 import { intelligenceTools } from "./tools/intelligence-tools";
+import { knowledgeBaseTools } from "./tools/knowledge-base-tools";
+import { KnowledgeExtractor } from "./knowledge-extractor";
 
 /**
  * Agent Orchestrator
@@ -54,6 +56,7 @@ export class AgentOrchestrator {
   public conversationManager: ConversationManager;
   public toolExecutor: ToolExecutor;
   public learningEngine: LearningEngine;
+  public knowledgeExtractor: KnowledgeExtractor;
 
   constructor(
     private db: MySql2Database<any>,
@@ -62,9 +65,10 @@ export class AgentOrchestrator {
     this.conversationManager = new ConversationManager(db);
     this.toolExecutor = new ToolExecutor(db);
     this.learningEngine = new LearningEngine(db);
+    this.knowledgeExtractor = new KnowledgeExtractor(db);
 
     // Register all available tools
-    this.toolExecutor.registerTools([...queryTools, ...generationTools, ...workflowTools, ...allModificationTools, ...intelligenceTools]);
+    this.toolExecutor.registerTools([...queryTools, ...generationTools, ...workflowTools, ...allModificationTools, ...intelligenceTools, ...knowledgeBaseTools]);
   }
 
   /**
@@ -105,7 +109,7 @@ export class AgentOrchestrator {
       const projectDb = await this.getProjectDb(request.projectId);
 
       // Build system prompt with context
-      const systemPrompt = this.buildSystemPrompt(request);
+      const systemPrompt = await this.buildSystemPrompt(request);
 
       // Prepare messages for LLM
       // IMPORTANT: Preserve full message structure including tool_calls and tool_call_id
@@ -328,6 +332,20 @@ export class AgentOrchestrator {
 
       console.log(`[AGENT] Complete. ${toolsUsed.length} tool calls across conversation. Total tokens: ${totalTokens}. Latency: ${Date.now() - startTime}ms`);
 
+      // Fire-and-forget: Extract knowledge from this conversation asynchronously
+      // This doesn't block the response — it runs in the background
+      if (toolCallResults.length > 0) {
+        this.knowledgeExtractor.extractFromConversation({
+          projectId: request.projectId,
+          userMessage: request.message,
+          agentResponse: responseContent,
+          toolResults: toolCallResults.map(tc => ({
+            name: tc.name,
+            result: tc.result,
+          })),
+        }).catch(err => console.error("[KNOWLEDGE EXTRACTOR] Background extraction failed:", err));
+      }
+
       return {
         conversationId,
         message: responseContent,
@@ -347,8 +365,9 @@ export class AgentOrchestrator {
 
   /**
    * Build system prompt with context
+   * Injects relevant knowledge base entries to make the agent smarter over time
    */
-  private buildSystemPrompt(request: AgentRequest): string {
+  private async buildSystemPrompt(request: AgentRequest): Promise<string> {
     let prompt = `You are a senior renewable energy due diligence analyst with 15+ years of experience in solar PV project assessment. You work within the OE (Operational Excellence) platform, helping users analyze project data, identify risks, and produce investment-grade due diligence reports.
 
 You think like an experienced technical advisor — not a search engine. When a user asks a question, you don't just retrieve data; you analyze it, cross-reference it, validate it against industry norms, and flag anything that looks unusual.
@@ -414,6 +433,19 @@ You have access to tools for querying facts, documents, red flags, and project s
 - End complex responses with a brief summary of key findings and recommended next steps.
 - If you're uncertain about something, say so explicitly rather than guessing.
 
+## KNOWLEDGE BASE
+
+You have a persistent knowledge base that accumulates insights across all projects. ALWAYS use the search_knowledge_base tool when you need domain-specific information. You can also add new knowledge using add_knowledge when you discover generalizable insights during analysis.
+
+The knowledge base contains:
+- Industry benchmarks and standards
+- Regional regulatory patterns
+- Lessons learned from previous project analyses
+- Best practices for due diligence
+- Technical standards and specifications
+
+When you discover something new and generalizable during analysis (e.g., a regional pattern, a useful benchmark, a common risk), proactively add it to the knowledge base so it's available for future projects.
+
 Current context:
 - Project ID: ${request.projectId}
 - User ID: ${request.userId}`;
@@ -423,6 +455,35 @@ Current context:
     }
     if (request.context?.workflowStage) {
       prompt += `\n- Workflow stage: ${request.context.workflowStage}`;
+    }
+
+    // Inject high-confidence knowledge base entries into the system prompt
+    // This gives the agent immediate access to accumulated knowledge without tool calls
+    try {
+      const { agentKnowledgeBase } = await import("./schema");
+      const { desc, eq } = await import("drizzle-orm");
+      
+      const topKnowledge = await this.db
+        .select({
+          topic: agentKnowledgeBase.topic,
+          content: agentKnowledgeBase.content,
+          category: agentKnowledgeBase.category,
+          confidence: agentKnowledgeBase.confidence,
+          sourceCount: agentKnowledgeBase.sourceCount,
+        })
+        .from(agentKnowledgeBase)
+        .orderBy(desc(agentKnowledgeBase.sourceCount))
+        .limit(15);
+
+      if (topKnowledge.length > 0) {
+        prompt += `\n\n## ACCUMULATED KNOWLEDGE (from previous analyses)\n\n`;
+        prompt += `The following insights have been accumulated from previous project analyses. Use them to inform your responses:\n\n`;
+        for (const entry of topKnowledge) {
+          prompt += `**${entry.topic}** (${entry.category}, ${entry.confidence} confidence, ${entry.sourceCount} source(s)):\n${entry.content}\n\n`;
+        }
+      }
+    } catch (error) {
+      console.error("[SYSTEM PROMPT] Failed to inject knowledge base:", error);
     }
 
     return prompt;
