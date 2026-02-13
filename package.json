@@ -38,9 +38,9 @@
   },
   "homepage": "https://github.com/robachamilton-afk/oe-ai-agent#readme",
   "peerDependencies": {
-    "@trpc/server": "^10.0.0",
-    "drizzle-orm": "^0.30.0",
-    "mysql2": "^3.0.0"
+    "@trpc/server": ">=10.0.0",
+    "drizzle-orm": ">=0.30.0",
+    "mysql2": ">=3.0.0"
   },
   "dependencies": {
     "uuid": "^9.0.0",
