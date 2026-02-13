@@ -8,6 +8,7 @@ import { queryTools } from "./tools/query-tools";
 import { generationTools } from "./tools/generation-tools";
 import { workflowTools } from "./tools/workflow-tools";
 import { allModificationTools } from "./tools/modification-tools";
+import { intelligenceTools } from "./tools/intelligence-tools";
 
 /**
  * Agent Orchestrator
@@ -63,7 +64,7 @@ export class AgentOrchestrator {
     this.learningEngine = new LearningEngine(db);
 
     // Register all available tools
-    this.toolExecutor.registerTools([...queryTools, ...generationTools, ...workflowTools, ...allModificationTools]);
+    this.toolExecutor.registerTools([...queryTools, ...generationTools, ...workflowTools, ...allModificationTools, ...intelligenceTools]);
   }
 
   /**
@@ -137,39 +138,77 @@ export class AgentOrchestrator {
       console.log("[AGENT DEBUG] Tools registered:", tools.length);
       console.log("[AGENT DEBUG] Tool names:", tools.map((t: any) => t.function.name));
 
-      // Call LLM with tool calling capability
-      console.log("[AGENT DEBUG] Initial LLM call - messages array:", JSON.stringify(messages, null, 2));
-      const llmResponse = await invokeLLM({
-        messages,
-        tools,
-        toolChoice: "auto",
-        maxTokens: 4000,
-      });
-
-      // Validate LLM response
-      if (!llmResponse || !llmResponse.choices || llmResponse.choices.length === 0) {
-        throw new Error("Invalid LLM response: missing choices array");
-      }
-
-      const assistantMessage = llmResponse.choices[0]?.message;
-      if (!assistantMessage) {
-        throw new Error("Invalid LLM response: missing message in choices[0]");
-      }
-
-      let responseContent = typeof assistantMessage.content === "string"
-        ? assistantMessage.content
-        : Array.isArray(assistantMessage.content)
-          ? assistantMessage.content.map((p: any) => typeof p === "string" ? p : p?.text || "").join("")
-          : String(assistantMessage.content || "");
+      // ============================================================
+      // MULTI-TURN TOOL CALLING LOOP
+      // The agent can iterate up to MAX_TOOL_ROUNDS times, calling
+      // tools and reasoning about results before generating its
+      // final response. This enables multi-step analysis:
+      // e.g., query facts → cross-reference → validate → synthesize
+      // ============================================================
+      const MAX_TOOL_ROUNDS = 5;
+      let responseContent = "";
       const toolCallResults: Array<{
         id: string;
         name: string;
         arguments: Record<string, unknown>;
         result: unknown;
       }> = [];
+      let totalTokens = 0;
+      let modelUsed = "";
 
-      // Execute tool calls if any
-      if (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0) {
+      const executionContext: ToolExecutionContext = {
+        userId: request.userId,
+        projectId: request.projectId,
+        conversationId,
+        db: this.db,
+        mainDb: this.db, // Alias for narrative tools
+        projectDb,
+      };
+
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        console.log(`[AGENT] Tool calling round ${round + 1}/${MAX_TOOL_ROUNDS}`);
+
+        // Call LLM with tool calling capability
+        const llmResponse = await invokeLLM({
+          messages,
+          tools,
+          toolChoice: "auto",
+          maxTokens: 8000,
+        });
+
+        // Track token usage
+        if (llmResponse.usage) {
+          totalTokens += llmResponse.usage.total_tokens;
+        }
+        modelUsed = llmResponse.model || modelUsed;
+
+        // Validate LLM response
+        if (!llmResponse || !llmResponse.choices || llmResponse.choices.length === 0) {
+          throw new Error("Invalid LLM response: missing choices array");
+        }
+
+        const assistantMessage = llmResponse.choices[0]?.message;
+        if (!assistantMessage) {
+          throw new Error("Invalid LLM response: missing message in choices[0]");
+        }
+
+        // Extract text content from the response
+        const messageContent = typeof assistantMessage.content === "string"
+          ? assistantMessage.content
+          : Array.isArray(assistantMessage.content)
+            ? assistantMessage.content.map((p: any) => typeof p === "string" ? p : p?.text || "").join("")
+            : String(assistantMessage.content || "");
+
+        // If no tool calls, this is the final response — break out of the loop
+        if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+          responseContent = messageContent;
+          console.log(`[AGENT] No more tool calls after round ${round + 1}. Final response ready.`);
+          break;
+        }
+
+        // === TOOL CALLS DETECTED — EXECUTE THEM ===
+        console.log(`[AGENT] Round ${round + 1}: ${assistantMessage.tool_calls.length} tool call(s): ${assistantMessage.tool_calls.map((tc: ToolCall) => tc.function.name).join(", ")}`);
+
         // Add the assistant message with tool_calls to the in-memory messages array
         messages.push({
           role: "assistant",
@@ -178,8 +217,6 @@ export class AgentOrchestrator {
         } as any);
 
         // Save the intermediate assistant message (with tool_calls) to the database
-        // This is critical for conversation history: when loaded later, OpenAI requires
-        // that tool messages are preceded by an assistant message with tool_calls.
         const toolCallsForDb = assistantMessage.tool_calls.map((tc: ToolCall) => {
           let parsedArgs: Record<string, unknown> = {};
           try {
@@ -199,9 +236,7 @@ export class AgentOrchestrator {
         await this.conversationManager.addMessage({
           conversationId,
           role: "assistant",
-          content: typeof assistantMessage.content === "string"
-            ? assistantMessage.content
-            : "",
+          content: messageContent || "",
           toolCalls: toolCallsForDb,
           metadata: {
             tokens: llmResponse.usage?.total_tokens,
@@ -210,21 +245,10 @@ export class AgentOrchestrator {
           },
         });
 
-        // CRITICAL: Add small delay to ensure assistant message with tool_calls is committed
-        // to database before tool result messages are saved. This prevents race condition where
-        // tool messages appear before assistant+tool_calls in conversation history, causing
-        // "tool must follow tool_calls" errors from OpenAI API.
+        // CRITICAL: Small delay to ensure message ordering in database
         await new Promise(resolve => setTimeout(resolve, 100));
 
-        const executionContext: ToolExecutionContext = {
-          userId: request.userId,
-          projectId: request.projectId,
-          conversationId,
-          db: this.db,
-          mainDb: this.db, // Alias for narrative tools
-          projectDb,
-        };
-
+        // Execute each tool call
         for (const toolCall of assistantMessage.tool_calls) {
           let args: Record<string, unknown>;
           try {
@@ -235,13 +259,12 @@ export class AgentOrchestrator {
             console.error(`Failed to parse tool call arguments for ${toolCall.function.name}:`, parseError);
             args = {};
           }
-          console.log(`[AGENT DEBUG] Executing tool: ${toolCall.function.name}`, args);
+          console.log(`[AGENT] Executing tool: ${toolCall.function.name}`, JSON.stringify(args));
           const result = await this.toolExecutor.executeTool(
             toolCall.function.name,
             args,
             executionContext
           );
-          console.log(`[AGENT DEBUG] Tool ${toolCall.function.name} result:`, JSON.stringify(result, null, 2));
 
           toolsUsed.push(toolCall.function.name);
           toolCallResults.push({
@@ -252,7 +275,6 @@ export class AgentOrchestrator {
           });
 
           // Add tool result to in-memory messages array
-          // IMPORTANT: Ensure content is never null/undefined - OpenAI requires non-null content for tool messages
           const toolContent = result.result != null 
             ? JSON.stringify(result.result)
             : JSON.stringify({ error: "Tool returned no result" });
@@ -272,28 +294,24 @@ export class AgentOrchestrator {
           });
         }
 
-        // Get final response after tool execution
-        console.log("[AGENT DEBUG] Final LLM call after tools - messages array:", JSON.stringify(messages, null, 2));
-        const finalResponse = await invokeLLM({
-          messages,
-          maxTokens: 2000,
-        });
+        // If this is the last allowed round, force a final response without tools
+        if (round === MAX_TOOL_ROUNDS - 1) {
+          console.log(`[AGENT] Max tool rounds reached. Forcing final response.`);
+          const finalResponse = await invokeLLM({
+            messages,
+            maxTokens: 8000,
+          });
 
-        // Validate final response
-        if (!finalResponse || !finalResponse.choices || finalResponse.choices.length === 0) {
-          throw new Error("Invalid final LLM response: missing choices array");
+          if (finalResponse?.choices?.[0]?.message) {
+            const finalMsg = finalResponse.choices[0].message;
+            responseContent = typeof finalMsg.content === "string"
+              ? finalMsg.content
+              : Array.isArray(finalMsg.content)
+                ? finalMsg.content.map((p: any) => typeof p === "string" ? p : p?.text || "").join("")
+                : String(finalMsg.content || "");
+            if (finalResponse.usage) totalTokens += finalResponse.usage.total_tokens;
+          }
         }
-
-        const finalMessage = finalResponse.choices[0]?.message;
-        if (!finalMessage) {
-          throw new Error("Invalid final LLM response: missing message in choices[0]");
-        }
-
-        responseContent = typeof finalMessage.content === "string"
-          ? finalMessage.content
-          : Array.isArray(finalMessage.content)
-            ? finalMessage.content.map((p: any) => typeof p === "string" ? p : p?.text || "").join("")
-            : String(finalMessage.content || "");
       }
 
       // Save the final assistant response to conversation
@@ -302,19 +320,21 @@ export class AgentOrchestrator {
         role: "assistant",
         content: responseContent || "I apologize, but I was unable to generate a response.",
         metadata: {
-          tokens: llmResponse.usage?.total_tokens,
-          model: llmResponse.model,
+          tokens: totalTokens,
+          model: modelUsed,
           latency: Date.now() - startTime,
         },
       });
+
+      console.log(`[AGENT] Complete. ${toolsUsed.length} tool calls across conversation. Total tokens: ${totalTokens}. Latency: ${Date.now() - startTime}ms`);
 
       return {
         conversationId,
         message: responseContent,
         toolCalls: toolCallResults.length > 0 ? toolCallResults : undefined,
         metadata: {
-          tokens: llmResponse.usage?.total_tokens,
-          model: llmResponse.model,
+          tokens: totalTokens,
+          model: modelUsed,
           latency: Date.now() - startTime,
           toolsUsed,
         },
@@ -329,15 +349,70 @@ export class AgentOrchestrator {
    * Build system prompt with context
    */
   private buildSystemPrompt(request: AgentRequest): string {
-    let prompt = `You are an AI assistant for the OE (Operational Excellence) ecosystem, specializing in renewable energy project due diligence and technical advisory.
+    let prompt = `You are a senior renewable energy due diligence analyst with 15+ years of experience in solar PV project assessment. You work within the OE (Operational Excellence) platform, helping users analyze project data, identify risks, and produce investment-grade due diligence reports.
 
-Your role is to help users:
-1. Query and analyze project data (documents, facts, red flags)
-2. Generate technical content (reports, risk assessments, specifications)
-3. Guide through workflows (project setup, deliverables preparation)
-4. Provide expert insights on renewable energy projects
+You think like an experienced technical advisor — not a search engine. When a user asks a question, you don't just retrieve data; you analyze it, cross-reference it, validate it against industry norms, and flag anything that looks unusual.
 
-You have access to tools for querying databases, generating content, and analyzing data. Use these tools when appropriate to provide accurate, data-driven responses.
+## YOUR ANALYTICAL APPROACH
+
+For every query, follow this reasoning process:
+
+1. RETRIEVE: Use tools to pull relevant facts from the database. Cast a wide net — if asked about capacity, also pull related facts like area, technology, yield, and DC/AC ratio.
+
+2. CROSS-REFERENCE: Look for relationships and contradictions between facts. Do the numbers add up? Does the DC capacity match the site area? Does the technology match the stated performance?
+
+3. VALIDATE: Check facts against your domain knowledge. Flag anything outside normal ranges. If a solar project in Oman claims a capacity factor of 15%, that's suspiciously low. If CAPEX is $0.30/Wp for a utility-scale project, that needs verification.
+
+4. SYNTHESIZE: Don't just list facts — tell the user what they mean. Connect the dots. "The project has 300 MWp DC on 250 hectares, giving a power density of 1.2 MW/ha, which is typical for single-axis tracker installations in arid regions."
+
+5. FLAG GAPS: Proactively identify what's missing. "I notice we have capacity and area data but no module specification or inverter details. These would be needed for a complete technical assessment."
+
+## DOMAIN KNOWLEDGE — SOLAR PV BENCHMARKS
+
+Use these ranges to validate facts (flag values outside these as needing verification):
+
+| Metric | Typical Range | Notes |
+|--------|--------------|-------|
+| DC/AC Ratio | 1.15 – 1.40 | Below 1.1 is conservative, above 1.5 is aggressive |
+| Capacity Factor (MENA) | 20% – 28% | Oman/UAE typically 22-26% |
+| Capacity Factor (Europe) | 10% – 18% | Southern Europe higher |
+| Specific Yield (MENA) | 1,700 – 2,200 kWh/kWp | Depends on tracking |
+| Power Density (fixed tilt) | 0.8 – 1.2 MW/ha | |
+| Power Density (tracker) | 0.6 – 1.0 MW/ha | Single-axis trackers need more space |
+| CAPEX Utility Solar | $0.50 – $1.00/Wp | Varies by region and year |
+| Module Degradation | 0.4% – 0.7%/year | Bifacial may differ |
+| PR (Performance Ratio) | 75% – 85% | Higher with modern tech |
+| Availability | 97% – 99.5% | Contractual vs actual |
+| Grid Losses | 1% – 5% | Depends on distance |
+| Inverter Efficiency | 97% – 99% | |
+
+## HOW TO RESPOND
+
+- When presenting facts, always include the source confidence level and whether the fact is verified.
+- When you spot a potential issue, frame it as: "This warrants verification because..." rather than "This is wrong."
+- When facts contradict each other, present both and explain the discrepancy.
+- When data is missing, suggest what documents might contain it.
+- Always provide context — don't just say "DC Capacity is 300 MWp". Say "DC Capacity is 300 MWp (AC: 280 MW, DC/AC ratio: 1.07). Note: This DC/AC ratio of 1.07 is below the typical range of 1.15-1.40, which may indicate conservative design or a potential data entry issue. Worth verifying against the technical design documents."
+- When generating overviews or reports, structure them professionally with clear sections, and always include a "Key Observations" or "Items Requiring Attention" section.
+
+## TOOL USAGE STRATEGY
+
+You have access to tools for querying facts, documents, red flags, and project summaries. Use them strategically:
+
+- Start with get_project_summary or list_fact_categories to understand what data exists before diving into specifics.
+- Use query_facts with broad searches first, then narrow down. Search by category AND by searchTerm for comprehensive coverage.
+- When asked about a specific topic, query multiple related categories. For example, if asked about "grid connection", search for facts in Technical_Design, Dependencies, and Risks_And_Issues.
+- After retrieving facts, use query_red_flags to check if there are any risks related to the topic.
+- Cross-reference document sources — if two facts from different documents contradict, note which documents they came from.
+
+## RESPONSE QUALITY
+
+- Be thorough but not verbose. Quality over quantity.
+- Use professional due diligence language.
+- Structure responses with clear headings when appropriate.
+- Include specific numbers and cite the data source (document ID, confidence level).
+- End complex responses with a brief summary of key findings and recommended next steps.
+- If you're uncertain about something, say so explicitly rather than guessing.
 
 Current context:
 - Project ID: ${request.projectId}
@@ -349,8 +424,6 @@ Current context:
     if (request.context?.workflowStage) {
       prompt += `\n- Workflow stage: ${request.context.workflowStage}`;
     }
-
-    prompt += `\n\nBe concise, professional, and technical. When using tools, explain what you're doing and why. When generating content, apply best practices for technical writing in the renewable energy domain.`;
 
     return prompt;
   }

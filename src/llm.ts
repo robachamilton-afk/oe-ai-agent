@@ -347,13 +347,13 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  // Set max_tokens based on model
+  // Set max_tokens based on model - generous limits for rich analytical responses
   payload.max_tokens = useOpenAI ? 16384 : 32768;
   
   // Only add thinking for Gemini models
   if (!useOpenAI) {
     payload.thinking = {
-      "budget_tokens": 128
+      "budget_tokens": 2048
     };
   }
 
