@@ -77,5 +77,4 @@ export type { AgentRouterDependencies } from './create-agent-router';
 // LLM and Database Types
 export type { Message, Tool, ToolCall, Role } from './llm';
 export { invokeLLM } from './llm';
-export type { ProjectDbPool, ProjectDbConnection } from './project-db-wrapper';
-export { wrapPool, wrapConnection } from './project-db-wrapper';
+export { ProjectDbPool, ProjectDbConnection, wrapPool, wrapConnection } from './project-db-wrapper';
