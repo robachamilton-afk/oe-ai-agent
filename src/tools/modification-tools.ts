@@ -725,7 +725,7 @@ export const createNarrativeTool: ToolDefinition = {
     await context.mainDb.insert(agentGeneratedContent).values({
       id,
       userId: context.userId,
-      projectId: context.projectId,
+      projectId: context.projectId || 0,
       conversationId: context.conversationId || undefined,
       contentType: args.contentType as string,
       content: args.content as string,
@@ -951,10 +951,10 @@ export const listNarrativesTool: ToolDefinition = {
 
     console.log("[LIST_NARRATIVES DEBUG] Listing narratives for project:", context.projectId);
 
-    let whereClause = eq(agentGeneratedContent.projectId, context.projectId);
+    let whereClause = eq(agentGeneratedContent.projectId, context.projectId || 0);
     if (args.contentType) {
       whereClause = and(
-        eq(agentGeneratedContent.projectId, context.projectId),
+        eq(agentGeneratedContent.projectId, context.projectId || 0),
         eq(agentGeneratedContent.contentType, args.contentType as string)
       )!;
     }
@@ -1026,7 +1026,7 @@ export const getNarrativeTool: ToolDefinition = {
       .from(agentGeneratedContent)
       .where(and(
         eq(agentGeneratedContent.id, args.narrativeId as string),
-        eq(agentGeneratedContent.projectId, context.projectId)
+        eq(agentGeneratedContent.projectId, context.projectId || 0)
       )!);
 
     if (!row) {

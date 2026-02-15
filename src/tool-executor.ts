@@ -28,7 +28,7 @@ export interface ToolDefinition {
 
 export interface ToolExecutionContext {
   userId: number;
-  projectId: number;
+  projectId?: number;
   conversationId?: string;
   db: MySql2Database<any>;
   mainDb: MySql2Database<any>; // Alias for db, used by narrative tools
@@ -111,7 +111,7 @@ export class ToolExecutor {
         id: actionId,
         conversationId: context.conversationId || null,
         userId: context.userId,
-        projectId: context.projectId,
+        projectId: context.projectId || null,
         actionType: this.getActionType(toolName),
         actionName: toolName,
         input: args,
@@ -136,7 +136,7 @@ export class ToolExecutor {
         id: actionId,
         conversationId: context.conversationId || null,
         userId: context.userId,
-        projectId: context.projectId,
+        projectId: context.projectId || null,
         actionType: this.getActionType(toolName),
         actionName: toolName,
         input: args,

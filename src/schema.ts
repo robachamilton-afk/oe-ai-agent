@@ -13,7 +13,7 @@ import { mysqlTable, varchar, text, timestamp, int, json, boolean, tinyint } fro
 export const agentConversations = mysqlTable("agentConversations", {
   id: varchar("id", { length: 36 }).primaryKey(),
   userId: int("userId").notNull(),
-  projectId: int("projectId").notNull(),
+  projectId: int("projectId"),  // Optional: null for global/non-project conversations
   title: varchar("title", { length: 255 }),
   context: json("context").$type<{
     currentPage?: string;
@@ -57,7 +57,7 @@ export const agentActions = mysqlTable("agentActions", {
   id: varchar("id", { length: 36 }).primaryKey(),
   conversationId: varchar("conversationId", { length: 36 }),
   userId: int("userId").notNull(),
-  projectId: int("projectId").notNull(),
+  projectId: int("projectId"),  // Optional: null for global/non-project actions
   actionType: varchar("actionType", { length: 50 }).notNull(), // query, generate, modify, analyze
   actionName: varchar("actionName", { length: 100 }).notNull(),
   input: json("input").$type<Record<string, unknown>>(),

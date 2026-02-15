@@ -24,7 +24,7 @@ import { KnowledgeExtractor } from "./knowledge-extractor";
 
 export interface AgentRequest {
   userId: number;
-  projectId: number;
+  projectId?: number;
   conversationId?: string;
   message: string;
   context?: {
@@ -105,8 +105,10 @@ export class AgentOrchestrator {
       // Get conversation history for context
       const history = await this.conversationManager.buildLLMContext(conversationId);
 
-      // Get project database connection
-      const projectDb = await this.getProjectDb(request.projectId);
+      // Get project database connection (only if projectId is provided)
+      const projectDb = request.projectId
+        ? await this.getProjectDb(request.projectId)
+        : null;
 
       // Build system prompt with context
       const systemPrompt = await this.buildSystemPrompt(request);
@@ -166,7 +168,7 @@ export class AgentOrchestrator {
         conversationId,
         db: this.db,
         mainDb: this.db, // Alias for narrative tools
-        projectDb,
+        projectDb: projectDb || undefined,
       };
 
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -447,8 +449,9 @@ The knowledge base contains:
 When you discover something new and generalizable during analysis (e.g., a regional pattern, a useful benchmark, a common risk), proactively add it to the knowledge base so it's available for future projects.
 
 Current context:
-- Project ID: ${request.projectId}
-- User ID: ${request.userId}`;
+${request.projectId ? `- Project ID: ${request.projectId}` : '- Mode: Global knowledge base query (no specific project selected)'}
+- User ID: ${request.userId}
+${!request.projectId ? '\nIMPORTANT: No project is selected. You cannot query project-specific facts, documents, or red flags. Focus on the global knowledge base, general domain knowledge, and cross-project insights. If the user asks about specific project data, let them know they need to select a project first.' : ''}`;
 
     if (request.context?.currentPage) {
       prompt += `\n- Current page: ${request.context.currentPage}`;
@@ -499,7 +502,7 @@ Current context:
   /**
    * Get all conversations for a user and project
    */
-  async getConversations(userId: number, projectId: number) {
+  async getConversations(userId: number, projectId?: number) {
     return await this.conversationManager.getConversations(userId, projectId);
   }
 

@@ -25,7 +25,7 @@ export interface ConversationContext {
 
 export interface CreateConversationParams {
   userId: number;
-  projectId: number;
+  projectId?: number;
   title?: string;
   context?: ConversationContext;
 }
@@ -60,7 +60,7 @@ export class ConversationManager {
     const conversation: InsertAgentConversation = {
       id: conversationId,
       userId: params.userId,
-      projectId: params.projectId,
+      projectId: params.projectId || null,
       title: params.title || `Conversation ${new Date().toISOString()}`,
       context: params.context || {},
       status: "active",
@@ -99,18 +99,17 @@ export class ConversationManager {
    */
   async getConversations(
     userId: number,
-    projectId: number,
+    projectId?: number,
     limit: number = 50
   ): Promise<AgentConversation[]> {
+    const conditions = [eq(agentConversations.userId, userId)];
+    if (projectId !== undefined) {
+      conditions.push(eq(agentConversations.projectId, projectId));
+    }
     return await this.db
       .select()
       .from(agentConversations)
-      .where(
-        and(
-          eq(agentConversations.userId, userId),
-          eq(agentConversations.projectId, projectId)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(desc(agentConversations.updatedAt))
       .limit(limit);
   }

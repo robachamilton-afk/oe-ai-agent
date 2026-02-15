@@ -86,7 +86,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
     chat: protectedProcedure
       .input(
         z.object({
-          projectId: z.number(),
+          projectId: z.number().optional(),
           message: z.string().min(1),
           conversationId: z.string().optional(),
           context: z
@@ -117,7 +117,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
     quickQuery: protectedProcedure
       .input(
         z.object({
-          projectId: z.number(),
+          projectId: z.number().optional(),
           query: z.string(),
         })
       )
@@ -157,7 +157,7 @@ export function createAgentRouter(deps: AgentRouterDependencies) {
     getConversations: protectedProcedure
       .input(
         z.object({
-          projectId: z.number(),
+          projectId: z.number().optional(),
           limit: z.number().optional().default(50),
         })
       )

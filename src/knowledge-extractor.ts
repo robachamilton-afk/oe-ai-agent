@@ -16,7 +16,7 @@ import { agentKnowledgeBase } from "./schema";
  */
 
 export interface ConversationSummary {
-  projectId: number;
+  projectId?: number;
   userMessage: string;
   agentResponse: string;
   toolResults: Array<{

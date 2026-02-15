@@ -120,7 +120,7 @@ export const generateRiskNarrativeTool: ToolDefinition = {
     await context.db.insert(agentGeneratedContent).values({
       id: contentId,
       userId: context.userId,
-      projectId: context.projectId,
+      projectId: context.projectId || 0,
       conversationId: context.conversationId ?? undefined,
       contentType: "risk_narrative",
       prompt,
@@ -219,7 +219,7 @@ export const generateProjectSummaryTool: ToolDefinition = {
     await context.db.insert(agentGeneratedContent).values({
       id: contentId,
       userId: context.userId,
-      projectId: context.projectId,
+      projectId: context.projectId || 0,
       conversationId: context.conversationId ?? undefined,
       contentType: "project_summary",
       prompt,
@@ -315,7 +315,7 @@ export const generateTechnicalSpecificationTool: ToolDefinition = {
     await context.db.insert(agentGeneratedContent).values({
       id: contentId,
       userId: context.userId,
-      projectId: context.projectId,
+      projectId: context.projectId || 0,
       conversationId: context.conversationId ?? undefined,
       contentType: "technical_specification",
       prompt,
