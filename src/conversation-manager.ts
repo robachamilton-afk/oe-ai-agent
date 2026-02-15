@@ -60,12 +60,10 @@ export class ConversationManager {
     const conversation: InsertAgentConversation = {
       id: conversationId,
       userId: params.userId,
-      projectId: params.projectId || null,
+      projectId: params.projectId ?? null,
       title: params.title || `Conversation ${new Date().toISOString()}`,
       context: params.context || {},
       status: "active",
-      createdAt: undefined,
-      updatedAt: undefined,
     };
 
     await this.db.insert(agentConversations).values(conversation);
