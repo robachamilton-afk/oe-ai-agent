@@ -1,6 +1,6 @@
 {
   "name": "@oe-ecosystem/ai-agent",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "AI Agent module for the OE Ecosystem - conversational AI with tool execution, learning, and content generation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

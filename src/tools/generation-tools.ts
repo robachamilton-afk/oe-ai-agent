@@ -120,15 +120,15 @@ export const generateRiskNarrativeTool: ToolDefinition = {
     await context.db.insert(agentGeneratedContent).values({
       id: contentId,
       userId: context.userId,
-      projectId: context.projectId || 0,
-      conversationId: context.conversationId ?? undefined,
+      projectId: context.projectId ?? 0,
+      conversationId: context.conversationId ?? null,
       contentType: "risk_narrative",
       prompt,
       content: generatedContent,
-      finalVersion: undefined,
+      finalVersion: null,
       userEdited: 0,
-      modelVersion: styleModel?.version?.toString() ?? undefined,
-      metadata: undefined,
+      modelVersion: styleModel?.version?.toString() ?? null,
+      metadata: null,
     });
 
     return {
@@ -219,15 +219,15 @@ export const generateProjectSummaryTool: ToolDefinition = {
     await context.db.insert(agentGeneratedContent).values({
       id: contentId,
       userId: context.userId,
-      projectId: context.projectId || 0,
-      conversationId: context.conversationId ?? undefined,
+      projectId: context.projectId ?? 0,
+      conversationId: context.conversationId ?? null,
       contentType: "project_summary",
       prompt,
       content: generatedContent,
-      finalVersion: undefined,
+      finalVersion: null,
       userEdited: 0,
-      modelVersion: undefined,
-      metadata: undefined,
+      modelVersion: null,
+      metadata: null,
     });
 
     return {
@@ -315,15 +315,15 @@ export const generateTechnicalSpecificationTool: ToolDefinition = {
     await context.db.insert(agentGeneratedContent).values({
       id: contentId,
       userId: context.userId,
-      projectId: context.projectId || 0,
-      conversationId: context.conversationId ?? undefined,
+      projectId: context.projectId ?? 0,
+      conversationId: context.conversationId ?? null,
       contentType: "technical_specification",
       prompt,
       content: generatedContent,
-      finalVersion: undefined,
+      finalVersion: null,
       userEdited: 0,
-      modelVersion: undefined,
-      metadata: undefined,
+      modelVersion: null,
+      metadata: null,
     });
 
     return {

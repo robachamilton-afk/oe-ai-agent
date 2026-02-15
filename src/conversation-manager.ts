@@ -117,16 +117,18 @@ export class ConversationManager {
    */
   async addMessage(params: AddMessageParams): Promise<AgentMessage> {
     const messageId = uuidv4();
-    // IMPORTANT: Explicitly set optional fields to undefined to avoid Drizzle
-    // using SQL 'default' keyword which causes INSERT errors
+    // IMPORTANT: Use null (not undefined) for optional fields.
+    // mysql2 converts undefined to empty string '', which breaks JSON columns
+    // and nullable varchar columns. null is properly sent as SQL NULL.
+    // Do NOT include createdAt — let the DB defaultNow() handle it.
     const message: InsertAgentMessage = {
       id: messageId,
       conversationId: params.conversationId,
       role: params.role,
       content: params.content,
-      toolCalls: params.toolCalls ?? undefined,
-      toolCallId: params.toolCallId ?? undefined,
-      metadata: params.metadata ?? undefined,
+      toolCalls: params.toolCalls ?? null,
+      toolCallId: params.toolCallId ?? null,
+      metadata: params.metadata ?? null,
     };
 
     await this.db.insert(agentMessages).values(message);

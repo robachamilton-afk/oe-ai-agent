@@ -107,17 +107,19 @@ export class ToolExecutor {
       const executionTimeMs = Date.now() - startTime;
 
       // Log the action
+      // IMPORTANT: Use ?? null (not || null) to avoid converting projectId=0 to null
+      // Use null instead of undefined for optional fields — mysql2 converts undefined to ''
       await this.logAction({
         id: actionId,
-        conversationId: context.conversationId || null,
+        conversationId: context.conversationId ?? null,
         userId: context.userId,
-        projectId: context.projectId || null,
+        projectId: context.projectId ?? null,
         actionType: this.getActionType(toolName),
         actionName: toolName,
         input: args,
         output: result as Record<string, unknown>,
         success: 1,
-        errorMessage: undefined,
+        errorMessage: null,
         executionTimeMs,
       });
 
@@ -132,15 +134,16 @@ export class ToolExecutor {
         error instanceof Error ? error.message : String(error);
 
       // Log the failed action
+      // IMPORTANT: Use ?? null (not || null) and null instead of undefined
       await this.logAction({
         id: actionId,
-        conversationId: context.conversationId || null,
+        conversationId: context.conversationId ?? null,
         userId: context.userId,
-        projectId: context.projectId || null,
+        projectId: context.projectId ?? null,
         actionType: this.getActionType(toolName),
         actionName: toolName,
         input: args,
-        output: undefined,
+        output: null,
         success: 0,
         errorMessage,
         executionTimeMs,

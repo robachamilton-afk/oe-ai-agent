@@ -722,20 +722,21 @@ export const createNarrativeTool: ToolDefinition = {
 
     console.log("[CREATE_NARRATIVE DEBUG] Creating narrative with ID:", id);
 
+    // IMPORTANT: Use null (not undefined) for optional fields.
+    // mysql2 converts undefined to empty string '', which breaks nullable columns.
+    // Do NOT include createdAt/updatedAt — let DB defaults handle them.
     await context.mainDb.insert(agentGeneratedContent).values({
       id,
       userId: context.userId,
-      projectId: context.projectId || 0,
-      conversationId: context.conversationId || undefined,
+      projectId: context.projectId ?? 0,
+      conversationId: context.conversationId ?? null,
       contentType: args.contentType as string,
       content: args.content as string,
-      prompt: undefined,
+      prompt: null,
       modelVersion: 'user_created',
       userEdited: 0,
-      finalVersion: undefined,
+      finalVersion: null,
       metadata: enrichedMetadata,
-      createdAt: undefined,
-      updatedAt: undefined,
     });
 
     console.log("[CREATE_NARRATIVE DEBUG] Created narrative with ID:", id);
@@ -834,7 +835,7 @@ export const updateNarrativeTool: ToolDefinition = {
     }
 
     // Always update updatedAt
-    updateData.updatedAt = undefined; // Let DB handle timestamp
+    updateData.updatedAt = new Date(); // Explicitly set timestamp (undefined becomes '' via mysql2)
 
     console.log("[UPDATE_NARRATIVE DEBUG] Updating narrative:", args.narrativeId);
     console.log("[UPDATE_NARRATIVE DEBUG] Update data:", updateData);
